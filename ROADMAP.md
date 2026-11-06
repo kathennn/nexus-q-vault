@@ -12,7 +12,8 @@
 - [ ] Desktop UI and accessible onboarding.
   - [x] Initial Tauri 2 desktop shell and Rust command boundary (prototype only; not yet user-tested).
   - [x] UI commands for individual files, folder encryption/restoration and encrypted key backups.
-  - [ ] Native file/folder pickers, onboarding polish and accessibility review.
+  - [x] Native file/folder pickers through Tauri's cross-platform dialog plugin.
+  - [ ] Onboarding polish and accessibility review.
 - [ ] CI, dependency review, fuzzing and reproducible-build investigation.
 - [ ] External security review and community beta.
 - [ ] 1.0 release after recovery, format and update-security criteria are met.

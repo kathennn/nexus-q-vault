@@ -8,7 +8,8 @@ use nexusq_core::{
     vault::{Algorithm, KeyId, KeyStatus, Purpose, Session, Vault},
 };
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_dialog::{DialogExt, FilePath};
 use zeroize::Zeroizing;
 
 #[derive(Default)]
@@ -265,8 +266,95 @@ fn import_backup(
     Ok("Backup restaurado en un nuevo vault y verificado".into())
 }
 
+fn selected_path(path: Option<FilePath>) -> Result<Option<String>, String> {
+    match path {
+        Some(path) => {
+            let path = path
+                .into_path()
+                .map_err(|error| format!("No se pudo interpretar la ruta seleccionada: {error}"))?;
+            let path = path
+                .to_str()
+                .ok_or_else(|| "La ruta seleccionada no es compatible con UTF-8".to_string())?;
+            Ok(Some(path.to_owned()))
+        }
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn pick_file_path(app: AppHandle, kind: String) -> Result<Option<String>, String> {
+    let selected = match kind.as_str() {
+        "vault" => app
+            .dialog()
+            .file()
+            .set_title("Seleccionar vault NEXUS-Q")
+            .add_filter("Vault NEXUS-Q", &["nqv"])
+            .blocking_pick_file(),
+        "backup" => app
+            .dialog()
+            .file()
+            .set_title("Seleccionar backup cifrado")
+            .add_filter("Backup NEXUS-Q", &["nqb"])
+            .blocking_pick_file(),
+        "encrypted" => app
+            .dialog()
+            .file()
+            .set_title("Seleccionar archivo cifrado")
+            .add_filter("Archivo NEXUS-Q", &["nqx"])
+            .blocking_pick_file(),
+        "any" => app
+            .dialog()
+            .file()
+            .set_title("Seleccionar archivo original")
+            .blocking_pick_file(),
+        _ => return Err("Tipo de selector de archivo no válido".into()),
+    };
+    selected_path(selected)
+}
+
+#[tauri::command]
+async fn pick_save_path(app: AppHandle, kind: String) -> Result<Option<String>, String> {
+    let selected = match kind.as_str() {
+        "vault" => app
+            .dialog()
+            .file()
+            .set_title("Guardar vault NEXUS-Q")
+            .add_filter("Vault NEXUS-Q", &["nqv"])
+            .set_file_name("nexus-q-vault.nqv")
+            .blocking_save_file(),
+        "backup" => app
+            .dialog()
+            .file()
+            .set_title("Guardar backup cifrado")
+            .add_filter("Backup NEXUS-Q", &["nqb"])
+            .set_file_name("backup.nqb")
+            .blocking_save_file(),
+        "restored" => app
+            .dialog()
+            .file()
+            .set_title("Guardar archivo restaurado")
+            .set_file_name("restored-file")
+            .blocking_save_file(),
+        _ => return Err("Tipo de destino no válido".into()),
+    };
+    selected_path(selected)
+}
+
+#[tauri::command]
+async fn pick_folder_path(app: AppHandle, kind: String) -> Result<Option<String>, String> {
+    let title = match kind.as_str() {
+        "source" => "Seleccionar carpeta original",
+        "vault-folder" => "Seleccionar carpeta vault",
+        "parent" => "Seleccionar carpeta contenedora",
+        _ => return Err("Tipo de selector de carpeta no válido".into()),
+    };
+    let selected = app.dialog().file().set_title(title).blocking_pick_folder();
+    selected_path(selected)
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             vault_status,
@@ -278,7 +366,10 @@ fn main() {
             encrypt_folder,
             decrypt_folder,
             export_backup,
-            import_backup
+            import_backup,
+            pick_file_path,
+            pick_save_path,
+            pick_folder_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running NEXUS-Q Vault");

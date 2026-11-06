@@ -28,7 +28,7 @@ See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [docs/DECISION
 The engine revision pinned by CI is `efe486603af266c379131526d8320a0584254ce4`. Its file helpers publish outputs via a same-directory temporary file and atomic no-clobber hard link; on Unix the file is created with mode `0600` and the containing directory is synced. This is create-only publication, not atomic replacement. Non-Unix permission and durability semantics still require platform-specific validation. The engine's current default provider is RustCrypto. Experimental native backends are not enabled by this project. Exact algorithms and security claims must be tied to the engine version and its published documentation; "post-quantum" does not mean every operation or threat is quantum-proof.
 
 ## Repository status
-This repository contains project governance, a Rust integration spike and an early Tauri 2 desktop prototype (`apps/desktop`). The prototype currently supports vault create/open/lock, single-file `.nqx` encryption/decryption, folder encryption using a versioned encrypted manifest with opaque object names, and encrypted vault-key backup export/import through `nexusq-core`. Backups do not bundle `.nqx` payload files or folder-vault object directories; preserve those separately. Folder encryption rejects symlinks, omits empty directories, rejects unsafe paths and case-insensitive path collisions, and limits each file to 32 MiB because the pinned engine processes complete files in memory. It is not yet user-tested or production-ready. Native file pickers, recovery usability testing, format migration policy, release pipeline and independent security review remain incomplete.
+This repository contains project governance, a Rust integration spike and an early Tauri 2 desktop prototype (`apps/desktop`). The prototype currently supports vault create/open/lock, single-file `.nqx` encryption/decryption, folder encryption using a versioned encrypted manifest with opaque object names, and encrypted vault-key backup export/import through `nexusq-core`. Backups do not bundle `.nqx` payload files or folder-vault object directories; preserve those separately. Folder encryption rejects symlinks, omits empty directories, rejects unsafe paths and case-insensitive path collisions, and limits each file to 32 MiB because the pinned engine processes complete files in memory. It is not yet user-tested or production-ready. Recovery usability testing, format migration policy, release pipeline, installer signing and independent security review remain incomplete.
 
 ## Run the desktop prototype
 
@@ -38,7 +38,7 @@ The desktop app uses Tauri 2 and requires the platform webview/build prerequisit
 cargo run --manifest-path apps/desktop/Cargo.toml
 ```
 
-The current prototype accepts filesystem paths manually. Native file/folder pickers and installer bundling are not enabled yet. The desktop crate currently requires Rust 1.90 or newer; the cryptographic engine's own MSRV remains governed by `nexusq-core`.
+Native file and folder pickers are available; paths remain editable manually. The current UI accepts UTF-8 filesystem paths. For folder-vault output, choose a parent directory and edit the proposed child path if desired. Installer bundling is not enabled yet. The desktop crate currently requires Rust 1.90 or newer; the cryptographic engine's own MSRV remains governed by `nexusq-core`.
 
 ## Build the spike
 Prerequisites: Rust 1.88+ and a sibling checkout of `../nexus-q` containing the matching `nexusq-core` workspace.
