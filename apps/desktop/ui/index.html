@@ -9,37 +9,50 @@
   <script src="./app.js" defer></script>
 </head>
 <body>
-  <main class="shell">
+  <div class="app-layout">
+    <aside class="sidebar">
+      <a class="side-brand" href="#overview"><img src="./icons/icon.png" alt="NEXUS-Q Vault"><span><b>NEXUS-Q</b><small>VAULT DESKTOP</small></span></a>
+      <div class="side-label">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <a href="#overview" class="active">◫ <span>Overview</span></a>
+        <a href="#access">▣ <span>Vault access</span></a>
+        <a href="#operations">⌘ <span>File operations</span></a>
+        <a href="#settings">⚙ <span>Settings</span></a>
+        <a href="#help">? <span>Help & guide</span></a>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="repo-card"><span class="repo-kicker">OPEN SOURCE</span><b>Build security with us.</b><p>Explore the project, contribute ideas and leave a star on GitHub.</p><a href="https://github.com/lecodev-26/nexus-q" target="_blank" rel="noopener noreferrer">View NEXUS-Q repository ↗</a></div>
+      <div class="side-profile"><div id="sidebar-avatar" class="avatar">U</div><div><b id="sidebar-user">Local user</b><small>LOCAL PROFILE</small></div></div>
+    </aside>
+    <main class="shell">
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">NQ</div>
+        <img class="brand-mark" src="./icons/icon.png" alt="NEXUS-Q Vault">
         <div><p class="eyebrow">LOCAL-FIRST SECURITY</p><h1>NEXUS-Q <span>Vault</span></h1></div>
       </div>
-      <div class="status-wrap" role="status" aria-live="polite" aria-atomic="true"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="vault-status">Bloqueado</span></div>
+      <div class="top-actions"><button id="language-toggle" class="top-action" type="button">ES</button><button id="theme-toggle" class="top-action" type="button" aria-label="Toggle light and dark mode">Light mode</button><div class="status-wrap" role="status" aria-live="polite" aria-atomic="true"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="vault-status">Locked</span></div></div>
     </header>
 
-    <section class="intro">
+    <section class="intro" id="overview">
       <p class="eyebrow">TU ESPACIO PRIVADO</p>
       <h2>Protege tus archivos.<br><span>Sin salir de tu dispositivo.</span></h2>
       <p class="lede">Cifrado local y backups protegidos. Tus archivos originales se conservan: Vault nunca los elimina automáticamente.</p>
     </section>
 
-    <section class="notice" role="note">
-      <strong>Versión de desarrollo</strong>
-      <span>Incluye cifrado de archivos y carpetas con manifiesto cifrado. No conserva carpetas vacías ni admite enlaces simbólicos; cada archivo está limitado a 32 MiB por el motor en memoria. El backup .nqb contiene las claves, no los archivos .nqx ni las carpetas protegidas: conserva ambas copias por separado. Los selectores nativos permiten elegir archivos y carpetas. No la uses como única copia de datos importantes.</span>
-    </section>
 
-    <section class="panel-grid">
+    <section class="panel-grid" id="access">
       <article class="panel">
         <div class="panel-heading"><span class="step">01</span><div><h3>Crear un vault</h3><p>Genera un contenedor cifrado nuevo.</p></div></div>
         <form id="create-form">
           <label for="create-path">Ruta del nuevo vault</label>
           <div class="path-row">
-            <input id="create-path" required placeholder="/ruta/privada/mi-vault.nqv" autocomplete="off">
+            <input id="create-path" required placeholder="/path/to/my-vault.nqv" autocomplete="off">
             <button id="create-path-picker" class="picker" type="button" aria-label="Elegir ubicación del nuevo vault">Examinar</button>
           </div>
           <label for="create-password">Contraseña del vault</label>
-          <div class="secret-row"><input id="create-password" type="password" minlength="12" required placeholder="Mínimo 12 bytes" autocomplete="new-password"><button id="create-password-toggle" class="reveal" type="button" aria-controls="create-password" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
+          <div class="secret-row"><input id="create-password" type="password" minlength="12" required placeholder="At least 12 bytes" autocomplete="new-password"><button id="create-password-toggle" class="reveal" type="button" aria-controls="create-password" aria-label="Show password" aria-pressed="false">Show</button></div><button id="generate-password" class="quiet generate-password" type="button">Generate strong password</button><p class="settings-note">Store your password in a password manager. An encrypted recovery backup can restore vault keys, but it cannot reveal your original password.</p>
+          <label for="create-password-confirm">Confirmar contraseña</label>
+          <div class="secret-row"><input id="create-password-confirm" data-confirm-for="create-password" type="password" minlength="12" required autocomplete="new-password"><button id="create-password-confirm-toggle" class="reveal" type="button" aria-controls="create-password-confirm" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
           <button class="primary" type="submit">Crear y desbloquear</button>
         </form>
       </article>
@@ -49,17 +62,17 @@
         <form id="open-form">
           <label for="open-path">Ruta del vault</label>
           <div class="path-row">
-            <input id="open-path" required placeholder="/ruta/privada/mi-vault.nqv" autocomplete="off">
+            <input id="open-path" required placeholder="/path/to/my-vault.nqv" autocomplete="off">
             <button id="open-path-picker" class="picker" type="button" aria-label="Buscar un vault">Examinar</button>
           </div>
           <label for="open-password">Contraseña</label>
-          <div class="secret-row"><input id="open-password" type="password" required placeholder="Tu contraseña" autocomplete="current-password"><button id="open-password-toggle" class="reveal" type="button" aria-controls="open-password" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
+          <div class="secret-row"><input id="open-password" type="password" required placeholder="Your password" autocomplete="current-password"><button id="open-password-toggle" class="reveal" type="button" aria-controls="open-password" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
           <button class="secondary" type="submit">Desbloquear</button>
         </form>
       </article>
     </section>
 
-    <section class="workspace">
+    <section class="workspace" id="operations">
       <div class="section-title">
         <div><p class="eyebrow">VAULT DESBLOQUEADO</p><h3>Operaciones seguras</h3></div>
         <button id="lock-button" class="quiet" disabled>Bloquear vault</button>
@@ -130,7 +143,9 @@
             <button id="backup-path-picker" class="picker" type="button" aria-label="Elegir destino del backup">Examinar</button>
           </div>
           <label for="backup-password">Contraseña del backup</label>
-          <div class="secret-row"><input id="backup-password" type="password" minlength="12" required placeholder="Mínimo 12 bytes" autocomplete="new-password"><button id="backup-password-toggle" class="reveal" type="button" aria-controls="backup-password" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
+          <div class="secret-row"><input id="backup-password" type="password" minlength="12" required placeholder="At least 12 bytes" autocomplete="new-password"><button id="backup-password-toggle" class="reveal" type="button" aria-controls="backup-password" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
+          <label for="backup-password-confirm">Confirmar contraseña del backup</label>
+          <div class="secret-row"><input id="backup-password-confirm" data-confirm-for="backup-password" type="password" minlength="12" required autocomplete="new-password"><button id="backup-password-confirm-toggle" class="reveal" type="button" aria-controls="backup-password-confirm" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
           <button class="secondary" type="submit">Crear backup de claves</button>
         </form>
 
@@ -150,13 +165,35 @@
           </div>
           <label for="restore-vault-password">Nueva contraseña del vault</label>
           <div class="secret-row"><input id="restore-vault-password" type="password" minlength="12" required autocomplete="new-password"><button id="restore-vault-password-toggle" class="reveal" type="button" aria-controls="restore-vault-password" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
+          <label for="restore-vault-password-confirm">Confirmar nueva contraseña</label>
+          <div class="secret-row"><input id="restore-vault-password-confirm" data-confirm-for="restore-vault-password" type="password" minlength="12" required autocomplete="new-password"><button id="restore-vault-password-confirm-toggle" class="reveal" type="button" aria-controls="restore-vault-password-confirm" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
           <button class="secondary" type="submit">Restaurar en nuevo vault</button>
         </form>
       </div>
     </section>
 
     <section id="feedback" class="feedback" role="status" aria-live="polite" aria-atomic="true" hidden></section>
-    <footer><span>NEXUS-Q Vault · Local-first · Sin telemetría</span><span>Desarrollo temprano · No producción</span></footer>
+    <section class="settings-section" id="settings">
+      <div class="section-title"><div><p class="eyebrow">PREFERENCES</p><h3>Settings & profile</h3></div><span class="settings-version">Development build · v0.1.0</span></div>
+      <div class="settings-grid">
+        <article class="settings-card"><h4>Local profile</h4><p>Your profile stays on this device and is not uploaded.</p><label for="profile-name">Display name</label><input id="profile-name" maxlength="40" placeholder="Your name"><label for="profile-photo">Profile photo</label><input id="profile-photo" type="file" accept="image/png,image/jpeg,image/webp"><div class="profile-preview-row"><div id="profile-preview" class="avatar avatar-large">U</div><span>Stored locally in this app.</span></div><button id="save-profile" class="secondary" type="button">Save profile</button></article>
+        <article class="settings-card"><h4>Appearance</h4><p>Make Vault feel like your workspace.</p><label for="accent-color">Accent color</label><input id="accent-color" type="color" value="#111111"><label for="font-choice">Typography</label><select id="font-choice"><option value="system">System minimal</option><option value="inter">Inter</option><option value="serif">Elegant serif</option><option value="mono">Monospace</option></select><p class="settings-note">The default palette is monochrome. Your accent and font choices are saved locally.</p><button id="save-appearance" class="secondary" type="button">Apply appearance</button></article>
+        <article class="settings-card"><h4>Application</h4><p>Build information and important limitations.</p><div class="setting-line"><span>Version</span><b>0.1.0 · Development</b></div><div class="setting-line"><span>Data location</span><b>On this device</b></div><div class="setting-line"><span>Telemetry</span><b>Disabled</b></div><p class="settings-note">Do not use this development build as the only copy of important data. Keep encrypted payloads and recovery backups in separate safe locations.</p></article>
+      </div>
+    </section>
+    <section class="settings-section" id="help">
+      <div class="section-title"><div><p class="eyebrow">GETTING STARTED</p><h3>Help & user guide</h3></div></div>
+      <div class="guide-grid">
+        <article class="guide-card"><span>01</span><h4>Create your vault</h4><p>Choose a location, create a strong unique password and keep it safe. The vault file stores your protected key material.</p></article>
+        <article class="guide-card"><span>02</span><h4>Unlock your vault</h4><p>Select your existing .nqv file and enter its password. Lock the vault whenever you leave your computer.</p></article>
+        <article class="guide-card"><span>03</span><h4>Protect files and folders</h4><p>Unlock first, then choose a file or folder to encrypt. Original files are not deleted automatically.</p></article>
+        <article class="guide-card"><span>04</span><h4>Make a recovery backup</h4><p>Create an encrypted .nqb backup with a separate strong passphrase. Store it separately from your encrypted files.</p></article>
+        <article class="guide-card"><span>05</span><h4>Restore safely</h4><p>Use the backup passphrase to restore into a new vault. Keep the encrypted .nqx files and folder-vault data separately.</p></article>
+        <article class="guide-card"><span>06</span><h4>Important limitations</h4><p>Folder encryption currently supports files up to 32 MiB, skips empty folders and rejects symbolic links. This is an early development build, not independently audited.</p></article>
+      </div>
+    </section>
+    <footer><span>NEXUS-Q Vault · Local-first · No telemetry</span><span>Made for privacy</span></footer>
   </main>
+  </div>
 </body>
 </html>

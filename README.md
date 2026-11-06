@@ -1,5 +1,7 @@
 # NEXUS-Q Vault
 
+<p align="center"><img src="docs/nexus-q-vault-logo.png" alt="NEXUS-Q Vault logo" width="220"></p>
+
 **A local-first desktop vault for files, notes and backups, built around the NEXUS-Q cryptographic engine.**
 
 > **Status: early development / technical spike. Not production-ready.** Do not rely on this project as the only copy of important data.
