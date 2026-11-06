@@ -103,6 +103,7 @@ jobs:
         run: cargo install tauri-cli --version '^2.0.0' --locked
 
       - name: Verify dependency lockfile
+        shell: bash
         run: cargo metadata --locked --manifest-path apps/desktop/Cargo.toml --format-version 1 > /dev/null
 
       - name: Build native installer bundles
