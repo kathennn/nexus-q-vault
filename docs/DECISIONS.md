@@ -23,7 +23,7 @@ The pinned `nexusq-core` revision (`efe486603af266c379131526d8320a0584254ce4`) s
 
 NEXUS-Q Vault will keep using the engine as its only cryptographic implementation. It will not introduce a parallel envelope format or home-grown streaming cipher to compensate. Before beta, the integration still needs bounded resource use, explicit platform guarantees, overwrite UX/policy, and broader filesystem fault-injection tests. The upstream implementation is in `nexus-q` commit `efe4866`; it is not an independent security audit.
 
-The application-level tests cover wrong vault passwords, successful byte-for-byte file and backup roundtrips, recovery into a new vault password, folder roundtrips, path traversal rejection, symlink rejection, opaque object names, and tampered manifest/object rejection without leaving partial restore output. These tests do not establish crash consistency under power loss, large-file safety, cross-platform filesystem guarantees, or independent security review.
+The application-level tests cover wrong vault passwords, successful byte-for-byte file and backup roundtrips, recovery into a new vault password, folder-vault restoration after backup recovery, folder roundtrips, path traversal rejection, symlink rejection, opaque object names, and tampered manifest/object rejection without leaving partial restore output. These tests do not establish crash consistency under power loss, large-file safety, cross-platform filesystem guarantees, or independent security review.
 
 ## ADR-006 — Tauri desktop boundary
 **Status:** accepted for the desktop prototype; security review pending.

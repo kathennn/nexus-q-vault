@@ -5,7 +5,7 @@
 - [x] Public repository and contribution templates.
 - [ ] Security-reviewed vault/file/backup adapter and automated integration tests.
 - [ ] Recovery design and user-tested recovery flow.
-  - [x] Draft backup-based recovery proposal and automated restore with a new vault password (user testing still pending).
+  - [x] Draft backup-based recovery proposal and automated restore of file and folder vaults with a new vault password (user testing still pending).
 - [ ] Encrypted folder manifest and format migration policy.
   - [x] Version-1 encrypted manifest, opaque object names, safe relative paths, atomic create-only publication and folder roundtrip tests.
   - [ ] Format migration, empty-directory preservation, large-file streaming and cross-platform filesystem review.
