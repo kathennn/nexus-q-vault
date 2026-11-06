@@ -488,7 +488,8 @@ fn write_new_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nexusq_core::vault::{Algorithm, Purpose, Vault};
+    use nexusq_core::storage::backup;
+    use nexusq_core::vault::{Algorithm, Purpose, Vault, VaultError};
     use tempfile::tempdir;
 
     fn unlocked_session(dir: &std::path::Path) -> (Session, KeyId) {
@@ -729,6 +730,50 @@ mod tests {
 
         assert!(decrypt_folder(&session, &vault_dir, &restored).is_err());
         assert!(!restored.exists());
+    }
+
+    #[test]
+    fn folder_vault_survives_backup_recovery_with_new_vault_password() {
+        let dir = tempdir().unwrap();
+        let (session, key_id) = unlocked_session(dir.path());
+        let source = dir.path().join("backup-source");
+        let folder_vault = dir.path().join("folder-before-backup");
+        let backup_path = dir.path().join("keys.nqb");
+        let restored_vault_path = dir.path().join("restored-vault.nqv");
+        let restored_folder = dir.path().join("folder-after-recovery");
+        std::fs::create_dir_all(source.join("Documents")).unwrap();
+        std::fs::write(
+            source.join("Documents/important.txt"),
+            b"recover this folder",
+        )
+        .unwrap();
+
+        encrypt_folder(&session, &key_id, &source, &folder_vault).unwrap();
+        backup::export(&session, &backup_path, b"independent-backup-passphrase").unwrap();
+        session.lock().unwrap();
+
+        let restored_vault = backup::import(
+            &backup_path,
+            b"independent-backup-passphrase",
+            &restored_vault_path,
+            b"new-vault-password-after-recovery",
+        )
+        .unwrap();
+        assert!(matches!(
+            restored_vault.unlock(b"manifest-test-password"),
+            Err(VaultError::WrongPassword)
+        ));
+
+        let restored_session = restored_vault
+            .unlock(b"new-vault-password-after-recovery")
+            .unwrap();
+        let count = decrypt_folder(&restored_session, &folder_vault, &restored_folder).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(
+            std::fs::read(restored_folder.join("Documents/important.txt")).unwrap(),
+            b"recover this folder"
+        );
+        restored_session.lock().unwrap();
     }
 
     #[test]
