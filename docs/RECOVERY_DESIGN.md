@@ -29,8 +29,7 @@ A backup is encrypted with a passphrase independent from the vault password. Imp
 
 ## Release gates
 
-- Add automated tests proving restore with a new vault password and rejection of the original password on the restored vault.
-- Automated test: individual-file envelopes and a folder vault created before backup can both be opened after recovery.
+- [x] Automated tests prove restore with a new vault password, rejection of the original password, and recovery of pre-existing individual-file and folder-vault payloads.
 - Add backup verification and clear UI warnings about what is and is not included.
 - Test the recovery journey with non-technical users, including a failed/wrong backup passphrase case.
 - Review the design against the threat model before beta.

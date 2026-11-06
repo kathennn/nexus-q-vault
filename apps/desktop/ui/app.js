@@ -43,7 +43,7 @@ async function refreshStatus() {
     statusLabel.textContent = unlocked ? "Desbloqueado" : "Bloqueado";
     statusDot.classList.toggle("active", unlocked);
     lockButton.disabled = !unlocked;
-    document.querySelectorAll(".workspace input,.workspace button[type=submit],.workspace .picker")
+    document.querySelectorAll(".workspace input,.workspace button[type=submit],.workspace .picker,.workspace .reveal")
       .forEach((el) => { el.disabled = !unlocked; });
   } catch (error) {
     showMessage(String(error), true);
