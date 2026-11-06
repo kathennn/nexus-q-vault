@@ -146,7 +146,7 @@ jobs:
             - Windows: `.msi` and `.exe`
             - macOS: `.dmg`
 
-            Installers are built on native GitHub-hosted runners. They are not currently code-signed or notarized, and independently verified build provenance is not provided.
+            Windows and macOS installers are built on native GitHub-hosted runners. Linux `.deb` and `.AppImage` installers are built on the project's Zorin OS 18.1 host and uploaded separately. Build provenance is not independently verified. Installers are not currently code-signed or notarized.
 
             **Integrity**
             `SHA256SUMS.txt` contains SHA-256 checksums to detect accidental corruption. Checksums are not digital signatures and do not authenticate the publisher.

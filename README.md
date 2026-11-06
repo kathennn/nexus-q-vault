@@ -153,7 +153,7 @@ cd apps/desktop
 cargo tauri build
 ```
 
-The GitHub Actions release workflow builds platform-native installers on Linux, Windows and macOS when a version tag is pushed.
+GitHub Actions validates the project and builds the Windows and macOS installers. Linux `.deb` and `.AppImage` installers are built on the project's Zorin OS 18.1 machine and uploaded to the same GitHub Release; the release checksums are regenerated to cover every platform artifact.
 
 ## Architecture
 
