@@ -159,7 +159,7 @@ lockButton.addEventListener("click", async () => {
 
 refreshStatus();
 
-// Local preferences: language, appearance and profile never leave this device.
+// Local preferences: language and profile never leave this device.
 const preference = (key, fallback = "") => { try { return localStorage.getItem(`nqv.${key}`) ?? fallback; } catch { return fallback; } };
 const storePreference = (key, value) => { try { localStorage.setItem(`nqv.${key}`, value); } catch { /* storage may be unavailable */ } };
 const translations = {
@@ -215,20 +215,6 @@ if (languageToggle) {
   languageToggle.addEventListener("click", () => translatePage(preference("language", "en") === "en" ? "es" : "en"));
   translatePage(preference("language", "en"));
 }
-function applyTheme(theme) {
-  document.body.classList.toggle("dark", theme === "dark");
-  const button = $("theme-toggle");
-  if (button) button.textContent = preference("language", "en") === "es" ? (theme === "dark" ? "Modo claro" : "Modo oscuro") : (theme === "dark" ? "Light mode" : "Dark mode");
-  storePreference("theme", theme);
-  if (!preference("accent")) {
-    const base = theme === "dark" ? "#ffffff" : "#111111";
-    document.documentElement.style.setProperty("--accent", base);
-    document.documentElement.style.setProperty("--accent-ink", theme === "dark" ? "#111" : "#fff");
-    if ($("accent-color")) $("accent-color").value = base;
-  }
-}
-applyTheme(preference("theme", "light"));
-$("theme-toggle")?.addEventListener("click", () => applyTheme(document.body.classList.contains("dark") ? "light" : "dark"));
 function applyProfile(name, photo) {
   const safeName = name || "Local user";
   $("sidebar-user").textContent = safeName;
@@ -256,22 +242,35 @@ $("save-profile")?.addEventListener("click", () => {
   storePreference("profileName", name); storePreference("profilePhoto", profilePhoto);
   applyProfile(name, profilePhoto); showMessage("Local profile saved.");
 });
-function applyAppearance() {
-  const accent = $("accent-color").value;
-  const font = $("font-choice").value;
-  const fonts = {system:'Inter,ui-sans-serif,system-ui,sans-serif',inter:'Inter,ui-sans-serif,sans-serif',serif:'Georgia,"Times New Roman",serif',mono:'ui-monospace,SFMono-Regular,monospace'};
-  document.documentElement.style.setProperty("--accent", accent);
-  document.documentElement.style.setProperty("--accent-ink", ["#ffffff","#fff","#FFFFFF"].includes(accent) ? "#111" : "#fff");
-  document.documentElement.style.fontFamily = fonts[font] || fonts.system;
-  storePreference("accent", accent); storePreference("font", font);
+// Sidebar navigation switches independent views instead of scrolling one long page.
+const pageLinks = [...document.querySelectorAll(".side-nav a")];
+const pages = [...document.querySelectorAll(".app-page")];
+function showPage(pageId, updateHash = true) {
+  const selected = pages.some((page) => page.id === pageId) ? pageId : "overview";
+  pages.forEach((page) => page.classList.toggle("active", page.id === selected));
+  pageLinks.forEach((link) => {
+    const active = link.getAttribute("href") === "#" + selected;
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+  if (updateHash) history.replaceState(null, "", "#" + selected);
+  window.scrollTo({ top: 0, behavior: "instant" });
 }
-$("accent-color").value = preference("accent", document.body.classList.contains("dark") ? "#ffffff" : "#111111");
-$("font-choice").value = preference("font", "system");
-applyAppearance();
-$("save-appearance")?.addEventListener("click", () => { applyAppearance(); showMessage("Appearance preferences applied and saved locally."); });
-document.querySelectorAll(".side-nav a").forEach((link) => link.addEventListener("click", () => {
-  document.querySelectorAll(".side-nav a").forEach((item) => item.classList.toggle("active", item === link));
+pageLinks.forEach((link) => link.addEventListener("click", (event) => {
+  event.preventDefault();
+  showPage(link.hash.slice(1));
 }));
+showPage(location.hash.slice(1) || "overview", false);
+
+document.querySelector("[data-open-repository]")?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  try {
+    await window.__TAURI__.core.invoke("open_project_repository");
+  } catch (error) {
+    showMessage("Could not open GitHub: " + error, true);
+  }
+});
 
 // Generate a high-entropy password locally using the Web Crypto API.
 $("generate-password")?.addEventListener("click", () => {

@@ -21,7 +21,7 @@
         <a href="#help">? <span>Help & guide</span></a>
       </nav>
       <div class="sidebar-spacer"></div>
-      <div class="repo-card"><span class="repo-kicker">OPEN SOURCE</span><b>Build security with us.</b><p>Explore the project, contribute ideas and leave a star on GitHub.</p><a href="https://github.com/lecodev-26/nexus-q" target="_blank" rel="noopener noreferrer">View NEXUS-Q repository ↗</a></div>
+      <div class="repo-card"><span class="repo-kicker">OPEN SOURCE</span><b>Build security with us.</b><p>Explore the project, contribute ideas and leave a star on GitHub.</p><a class="repo-link" href="https://github.com/lecodev-26/nexus-q" data-open-repository><svg class="github-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.08c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.6 1.21 3.23.93.1-.72.39-1.21.7-1.49-2.48-.28-5.09-1.24-5.09-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.96 0 0 .94-.3 3.05 1.15a10.6 10.6 0 0 1 5.55 0c2.12-1.45 3.05-1.15 3.05-1.15.61 1.54.23 2.68.11 2.96.72.78 1.15 1.78 1.15 3 0 4.29-2.62 5.23-5.11 5.51.4.35.75 1.03.75 2.08v3.09c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z"/></svg><span>View NEXUS-Q repository ↗</span></a></div>
       <div class="side-profile"><div id="sidebar-avatar" class="avatar">U</div><div><b id="sidebar-user">Local user</b><small>LOCAL PROFILE</small></div></div>
     </aside>
     <main class="shell">
@@ -30,17 +30,19 @@
         <img class="brand-mark" src="./icons/icon.png" alt="NEXUS-Q Vault">
         <div><p class="eyebrow">LOCAL-FIRST SECURITY</p><h1>NEXUS-Q <span>Vault</span></h1></div>
       </div>
-      <div class="top-actions"><button id="language-toggle" class="top-action" type="button">ES</button><button id="theme-toggle" class="top-action" type="button" aria-label="Toggle light and dark mode">Light mode</button><div class="status-wrap" role="status" aria-live="polite" aria-atomic="true"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="vault-status">Locked</span></div></div>
+      <div class="top-actions"><button id="language-toggle" class="top-action" type="button">ES</button><div class="status-wrap" role="status" aria-live="polite" aria-atomic="true"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="vault-status">Locked</span></div></div>
     </header>
 
-    <section class="intro" id="overview">
+    <section class="app-page active" id="overview" data-page="overview">
+    <div class="intro">
       <p class="eyebrow">TU ESPACIO PRIVADO</p>
       <h2>Protege tus archivos.<br><span>Sin salir de tu dispositivo.</span></h2>
       <p class="lede">Cifrado local y backups protegidos. Tus archivos originales se conservan: Vault nunca los elimina automáticamente.</p>
+    </div>
     </section>
 
-
-    <section class="panel-grid" id="access">
+    <section class="app-page" id="access" data-page="access">
+    <div class="panel-grid">
       <article class="panel">
         <div class="panel-heading"><span class="step">01</span><div><h3>Crear un vault</h3><p>Genera un contenedor cifrado nuevo.</p></div></div>
         <form id="create-form">
@@ -70,9 +72,11 @@
           <button class="secondary" type="submit">Desbloquear</button>
         </form>
       </article>
+    </div>
     </section>
 
-    <section class="workspace" id="operations">
+    <section class="app-page" id="operations" data-page="operations">
+    <div class="workspace">
       <div class="section-title">
         <div><p class="eyebrow">VAULT DESBLOQUEADO</p><h3>Operaciones seguras</h3></div>
         <button id="lock-button" class="quiet" disabled>Bloquear vault</button>
@@ -170,18 +174,18 @@
           <button class="secondary" type="submit">Restaurar en nuevo vault</button>
         </form>
       </div>
+    </div>
     </section>
 
     <section id="feedback" class="feedback" role="status" aria-live="polite" aria-atomic="true" hidden></section>
-    <section class="settings-section" id="settings">
+    <section class="app-page settings-section" id="settings" data-page="settings">
       <div class="section-title"><div><p class="eyebrow">PREFERENCES</p><h3>Settings & profile</h3></div><span class="settings-version">Development build · v0.1.0</span></div>
       <div class="settings-grid">
         <article class="settings-card"><h4>Local profile</h4><p>Your profile stays on this device and is not uploaded.</p><label for="profile-name">Display name</label><input id="profile-name" maxlength="40" placeholder="Your name"><label for="profile-photo">Profile photo</label><input id="profile-photo" type="file" accept="image/png,image/jpeg,image/webp"><div class="profile-preview-row"><div id="profile-preview" class="avatar avatar-large">U</div><span>Stored locally in this app.</span></div><button id="save-profile" class="secondary" type="button">Save profile</button></article>
-        <article class="settings-card"><h4>Appearance</h4><p>Make Vault feel like your workspace.</p><label for="accent-color">Accent color</label><input id="accent-color" type="color" value="#111111"><label for="font-choice">Typography</label><select id="font-choice"><option value="system">System minimal</option><option value="inter">Inter</option><option value="serif">Elegant serif</option><option value="mono">Monospace</option></select><p class="settings-note">The default palette is monochrome. Your accent and font choices are saved locally.</p><button id="save-appearance" class="secondary" type="button">Apply appearance</button></article>
         <article class="settings-card"><h4>Application</h4><p>Build information and important limitations.</p><div class="setting-line"><span>Version</span><b>0.1.0 · Development</b></div><div class="setting-line"><span>Data location</span><b>On this device</b></div><div class="setting-line"><span>Telemetry</span><b>Disabled</b></div><p class="settings-note">Do not use this development build as the only copy of important data. Keep encrypted payloads and recovery backups in separate safe locations.</p></article>
       </div>
     </section>
-    <section class="settings-section" id="help">
+    <section class="app-page settings-section" id="help" data-page="help">
       <div class="section-title"><div><p class="eyebrow">GETTING STARTED</p><h3>Help & user guide</h3></div></div>
       <div class="guide-grid">
         <article class="guide-card"><span>01</span><h4>Create your vault</h4><p>Choose a location, create a strong unique password and keep it safe. The vault file stores your protected key material.</p></article>

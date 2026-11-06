@@ -352,6 +352,25 @@ async fn pick_folder_path(app: AppHandle, kind: String) -> Result<Option<String>
     selected_path(selected)
 }
 
+#[tauri::command]
+fn open_project_repository() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("cmd")
+        .args(["/C", "start", "", "https://github.com/lecodev-26/nexus-q"])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open")
+        .arg("https://github.com/lecodev-26/nexus-q")
+        .spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open")
+        .arg("https://github.com/lecodev-26/nexus-q")
+        .spawn();
+    result
+        .map(|_| ())
+        .map_err(|error| format!("No se pudo abrir GitHub: {error}"))
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -369,7 +388,8 @@ fn main() {
             import_backup,
             pick_file_path,
             pick_save_path,
-            pick_folder_path
+            pick_folder_path,
+            open_project_repository
         ])
         .run(tauri::generate_context!())
         .expect("error while running NEXUS-Q Vault");
