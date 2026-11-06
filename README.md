@@ -1,80 +1,188 @@
 # NEXUS-Q Vault
 
-<p align="center"><img src="docs/nexus-q-vault-logo.png" alt="NEXUS-Q Vault logo" width="220"></p>
+<p align="center">
+  <img src="docs/nexus-q-vault-logo.png" alt="NEXUS-Q Vault logo" width="180">
+</p>
 
-**A local-first desktop vault for files, notes and backups, built around the NEXUS-Q cryptographic engine.**
+<p align="center">
+  <strong>Protect your files. Without leaving your device.</strong><br>
+  A local-first desktop vault for encrypting files and folders, with separately encrypted recovery backups.
+</p>
 
-> **Status: early development / technical spike. Not production-ready.** Do not rely on this project as the only copy of important data.
+<p align="center">
+  <a href="https://nexus-q.link">Website</a> ·
+  <a href="https://github.com/lecodev-26/nexus-q-vault/releases">Downloads</a> ·
+  <a href="https://github.com/lecodev-26/nexus-q">Cryptographic engine</a> ·
+  <a href="SECURITY.md">Security policy</a>
+</p>
 
-NEXUS-Q Vault aims to let people without security expertise protect local files with a clear recovery path. Source code, vault-format decisions, threat model and release process are intended to remain public and auditable.
+<p align="center">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-orange?logo=rust">
+  <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri">
+  <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-green.svg">
+  <a href="https://github.com/lecodev-26/nexus-q-vault/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/lecodev-26/nexus-q-vault/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/lecodev-26/nexus-q-vault/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/lecodev-26/nexus-q-vault?include_prereleases"></a>
+</p>
 
-## What it aims to protect
-- Confidentiality and integrity of files stored in an encrypted local vault.
-- Recovery of vault data from a separately encrypted backup.
-- Cryptographic operations delegated to the `nexusq-core` Rust library.
+> **Early access — alpha software.** This project has not received an independent security audit. Do not use it as the only copy of important data or as the sole protection for high-value information. Read the [security limitations](#security-status-and-limitations) before use.
 
-## What it does not currently promise
-- Protection from malware, keyloggers, a compromised operating system or an attacker controlling the logged-in user session.
-- Secure deletion of original files, swap, filesystem snapshots or SSD blocks.
-- Cloud synchronization, sharing, collaboration or enterprise administration.
-- An independently audited implementation, certified cryptography, or reproducible release binaries.
+NEXUS-Q Vault is an open-source desktop application for protecting local files. It is designed around a simple idea: encryption and vault data should stay on the computer you control, without requiring a cloud account or a hosted service.
 
-## MVP scope
-The MVP is one use case: a **local encrypted file vault**. The desktop prototype covers vault creation, individual-file and folder encryption/decryption, and backup restoration. Synchronization, cloud services, sharing links, teams and enterprise management are explicitly out of scope.
+## At a glance
 
-See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [docs/DECISIONS.md](docs/DECISIONS.md), the [folder format v1](docs/FOLDER_FORMAT_V1.md), the [backup-based recovery proposal](docs/RECOVERY_DESIGN.md) and the [NQX2 streaming proposal](docs/STREAMING_FORMAT_PROPOSAL.md).
+- **Local-first:** vaults, encrypted files and backups are stored at locations you choose.
+- **File encryption:** encrypt individual files into `.nqx` sidecar files and restore them to a new destination.
+- **Folder encryption:** protect a folder using an authenticated encrypted manifest and opaque object names; original paths are inside the encrypted manifest.
+- **Recovery backup:** export an encrypted `.nqb` backup of vault/key state and restore it into a new vault with new credentials.
+- **No automatic source deletion:** original files are kept; encryption does not silently remove them.
+- **One cryptographic boundary:** cryptographic operations are delegated to the Rust `nexusq-core` engine.
+- **Desktop experience:** Tauri 2 interface for Linux, Windows and macOS, with light/dark themes and English/Spanish UI.
 
-## Cryptographic boundary
-`nexusq-core` is the sole cryptographic engine. Vault must not introduce parallel cryptographic implementations, custom key derivation, custom encryption formats or silent fallback paths. The integration spike uses the public `Vault`, `Session`, and `storage::backup` APIs from the sibling `nexus-q` checkout. This local path is a development convenience; a published build must pin a reviewed release or immutable revision and verify its provenance.
+## Screenshots
 
-The engine revision pinned by CI is `efe486603af266c379131526d8320a0584254ce4`. Its file helpers publish outputs via a same-directory temporary file and atomic no-clobber hard link; on Unix the file is created with mode `0600` and the containing directory is synced. This is create-only publication, not atomic replacement. Non-Unix permission and durability semantics still require platform-specific validation. The engine's current default provider is RustCrypto. Experimental native backends are not enabled by this project. Exact algorithms and security claims must be tied to the engine version and its published documentation; "post-quantum" does not mean every operation or threat is quantum-proof.
+### Overview
+<p align="center">
+  <img src="docs/screenshots/overview.png" alt="NEXUS-Q Vault overview screen" width="100%">
+</p>
 
-## Repository status
-This repository contains project governance, a Rust integration spike and an early Tauri 2 desktop prototype (`apps/desktop`). The prototype currently supports vault create/open/lock, single-file `.nqx` encryption/decryption, folder encryption using a versioned encrypted manifest with opaque object names, and encrypted vault-key backup export/import through `nexusq-core`. Backups do not bundle `.nqx` payload files or folder-vault object directories; preserve those separately. Folder encryption rejects symlinks, omits empty directories, rejects unsafe paths and case-insensitive path collisions, and limits each file to 32 MiB because the pinned engine processes complete files in memory. It is not yet user-tested or production-ready. Recovery usability testing, format migration policy, release pipeline, installer signing and independent security review remain incomplete.
+### Create or open a vault
+<p align="center">
+  <img src="docs/screenshots/vault-access.png" alt="Create and open a vault screen" width="100%">
+</p>
 
-## Run the desktop prototype
+### Encrypt and restore files and folders
+<p align="center">
+  <img src="docs/screenshots/file-operations.png" alt="File and folder encryption operations screen" width="100%">
+</p>
 
-The desktop app uses Tauri 2 and requires the platform webview/build prerequisites documented by Tauri. From this repository root, with the sibling `../nexus-q` checkout at the revision pinned by this project:
+### Settings and local profile
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="Settings and local profile screen" width="100%">
+</p>
 
-```sh
-cargo run --manifest-path apps/desktop/Cargo.toml
-```
+## How it works
 
-Native file and folder pickers are available; paths remain editable manually. The current UI accepts UTF-8 filesystem paths. For folder-vault output, choose a parent directory and edit the proposed child path if desired. Installer bundling is not enabled yet. The desktop crate currently requires Rust 1.90 or newer; the cryptographic engine's own MSRV remains governed by `nexusq-core`.
+1. **Create a vault** at a location you choose and set a strong vault password.
+2. **Unlock the vault** when you want to use its file-protection operations.
+3. **Encrypt files or folders.** The app writes encrypted output separately and leaves source files untouched.
+4. **Create a recovery backup** using a separate backup passphrase. Keep it somewhere safe and separate from the vault.
+5. **Restore when needed.** Import the backup into a new vault with a new vault password.
 
-## Build the spike
-Prerequisites: Rust 1.88+ and a sibling checkout of `../nexus-q` containing the matching `nexusq-core` workspace.
+### Important: keep all parts of your data
 
-```sh
-cargo test
-```
+A `.nqb` recovery backup contains vault/key state. It does **not** include your individual `.nqx` encrypted files or the encrypted objects inside a folder vault. Keep those encrypted payloads separately, along with the backup. Losing either the payloads or the required credentials can make recovery impossible.
 
-The spike is a library integration test, not a finished user-facing application. Do not put real passwords in shell history or command-line arguments.
+The backup passphrase is separate from the vault password. A backup restores vault/key state; it does not reveal or reset the original vault password.
 
-## Governance
-- License: MIT. See [LICENSE](LICENSE).
-- Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
-- Security reports: [SECURITY.md](SECURITY.md).
-- Community standards: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-- MVP definition: [PRODUCT.md](PRODUCT.md).
-- Threat model: [THREAT_MODEL.md](THREAT_MODEL.md).
-- Decisions: [docs/DECISIONS.md](docs/DECISIONS.md).
+## Current capabilities
 
-## Current file-operation constraints
+| Area | Available in this alpha |
+|---|---|
+| Vault lifecycle | Create, open, unlock and lock a local vault |
+| Individual files | Encrypt to `.nqx`; decrypt to a new destination |
+| Folders | Encrypt to an authenticated manifest plus opaque encrypted objects; restore to a new destination |
+| Recovery | Export/import an encrypted `.nqb` vault/key backup |
+| Password UX | Password generator and show/hide controls |
+| Desktop UI | Separate navigation pages, English/Spanish labels, light/dark mode |
+| Data collection | No application telemetry is implemented |
 
-The pinned engine reads complete inputs and envelopes into memory; it does not provide streaming file encryption or bounded-memory processing. File outputs now use atomic create-only publication: a completed temporary file is linked into place without overwriting an existing destination. On Unix, file data and the parent directory are synced and new files use mode `0600`. This does not provide atomic replacement, secure deletion, or validated permission/durability semantics on every platform. The folder adapter also uses create-only atomic publication, private directories/files on Unix, a manifest published last, and removes partial output on reported errors. It rejects symbolic links and limits individual files to 32 MiB. Empty directories are not represented. Large-file support and cross-platform filesystem guarantees remain release gates. Authentication failures are tested to produce no plaintext output.
+## Security status and limitations
 
-## Prepare the local engine checkout
+This is an early-access prototype, **not a security-audited or production-hardened product**. The repository publishes its [threat model](THREAT_MODEL.md), [security policy](SECURITY.md), and [format/design notes](docs/DECISIONS.md), but public documentation is not a substitute for independent review.
 
-The current spike uses a sibling path dependency, so clone the exact engine
-revision used for the integration test:
+Known limitations include:
+
+- The app cannot protect plaintext while the vault is unlocked from malware, keyloggers, screen capture, a compromised user account or a compromised operating system.
+- Original files are preserved. The app does not promise secure deletion of originals, temporary files, swap, snapshots, filesystem journals or SSD blocks.
+- Folder-vault objects are currently limited to **32 MiB per file** by the folder adapter. Large-file streaming is not implemented.
+- Folder encryption rejects symbolic links, omits empty directories, accepts portable UTF-8 paths only, and rejects unsafe paths and case-insensitive path collisions. Object count, approximate encrypted sizes, timestamps and access patterns remain visible.
+- Folder manifest format migration/upgrade behavior is not implemented yet.
+- The `.nqb` backup does not bundle encrypted file payloads or folder-vault object directories; preserve them separately.
+- Filesystem permission and durability guarantees vary by platform and still need broader validation.
+- Recovery usability, accessibility, update security, signing/notarization, reproducible builds and independent security review remain incomplete.
+- No FIPS validation, certification, independent audit or blanket “quantum-proof” claim is made.
+
+See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [SECURITY.md](SECURITY.md), [folder format v1](docs/FOLDER_FORMAT_V1.md), and the [streaming-format proposal](docs/STREAMING_FORMAT_PROPOSAL.md) for details.
+
+## Download
+
+Pre-release installers are published on the [GitHub Releases page](https://github.com/lecodev-26/nexus-q-vault/releases).
+
+| Platform | Release artifact |
+|---|---|
+| Linux | `.deb` and `.AppImage` |
+| Windows | `.msi` and `.exe` (NSIS installer) |
+| macOS | `.dmg` |
+
+Only download builds from this repository's Releases page. Each release includes a `SHA256SUMS.txt` file for accidental-corruption checks (checksums are not digital signatures). Alpha builds may contain platform-specific issues. Code signing/notarization and independent artifact provenance are not yet provided; your operating system may show an installation warning.
+
+On Linux, verify downloaded files with `sha256sum -c SHA256SUMS.txt`; on macOS use `shasum -a 256 -c SHA256SUMS.txt`. On Windows, compare `certutil -hashfile <installer> SHA256` with the matching entry. A matching checksum detects accidental changes but does not authenticate who built the installer.
+
+## Build from source
+
+### Requirements
+
+- Rust **1.90 or newer**.
+- The platform prerequisites for [Tauri 2](https://v2.tauri.app/start/prerequisites/).
+- A sibling checkout of the NEXUS-Q cryptographic engine at the exact revision used by this repository.
+
+The desktop crate uses a local path dependency on `../nexus-q`. From the Vault repository directory:
 
 ```sh
 git clone https://github.com/lecodev-26/nexus-q.git ../nexus-q
 git -C ../nexus-q checkout efe486603af266c379131526d8320a0584254ce4
-cargo test --locked
+
+cargo run --locked --manifest-path apps/desktop/Cargo.toml
 ```
 
-The CI workflow performs the same pinned checkout. Updating the engine revision
-is a security-sensitive dependency change: review the engine release notes,
-cryptography documentation, dependency diff and compatibility tests first.
+Run the repository checks before submitting changes:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo fmt --manifest-path apps/desktop/Cargo.toml -- --check
+cargo clippy --manifest-path apps/desktop/Cargo.toml --locked --all-targets -- -D warnings
+```
+
+To build installers locally, install the Tauri CLI 2 and run:
+
+```sh
+cargo install tauri-cli --version '^2.0.0' --locked
+cd apps/desktop
+cargo tauri build
+```
+
+The GitHub Actions release workflow builds platform-native installers on Linux, Windows and macOS when a version tag is pushed.
+
+## Architecture
+
+- **Desktop shell:** Tauri 2.
+- **Application and filesystem boundary:** Rust commands in `apps/desktop/src/main.rs`.
+- **User interface:** HTML, CSS and JavaScript in `apps/desktop/ui/`.
+- **Cryptography:** `nexusq-core` from the [NEXUS-Q engine repository](https://github.com/lecodev-26/nexus-q), pinned in CI/release builds to commit `efe486603af266c379131526d8320a0584254ce4`.
+- **Folder adapter:** versioned authenticated manifest and opaque encrypted objects; see [FOLDER_FORMAT_V1.md](docs/FOLDER_FORMAT_V1.md).
+
+Vault does not implement a parallel cryptographic engine, custom key derivation or an independent encryption format.
+
+## Project documentation
+
+- [Product scope and MVP](PRODUCT.md)
+- [Threat model](THREAT_MODEL.md)
+- [Security policy and vulnerability reporting](SECURITY.md)
+- [Architecture decisions](docs/DECISIONS.md)
+- [Folder vault format v1](docs/FOLDER_FORMAT_V1.md)
+- [Recovery design](docs/RECOVERY_DESIGN.md)
+- [Streaming format proposal](docs/STREAMING_FORMAT_PROPOSAL.md)
+- [Roadmap](ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [MIT license](LICENSE)
+
+## Contributing
+
+Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) first. Changes involving cryptography, key handling, recovery, file formats, backups, dependencies or release verification are security-sensitive and must include appropriate tests and threat-model updates.
+
+## License
+
+NEXUS-Q Vault is released under the [MIT License](LICENSE).

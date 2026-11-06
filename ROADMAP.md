@@ -18,7 +18,8 @@
   - [x] Initial accessibility pass: semantic status/errors, labelled picker controls, busy states, keyboard focus and reduced-motion support.
   - [x] Password visibility controls; visibility resets when forms clear secrets or the vault is locked.
   - [ ] User testing, onboarding polish and full accessibility review.
-- [ ] CI, dependency review, fuzzing and reproducible-build investigation.
+- [x] CI for library and desktop checks/builds; cross-platform alpha installer release workflow.
+- [ ] Dependency review, fuzzing, signed releases and reproducible-build investigation.
 - [ ] External security review and community beta.
 - [ ] 1.0 release after recovery, format and update-security criteria are met.
 

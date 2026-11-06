@@ -11,7 +11,7 @@ Thank you for considering a contribution to NEXUS-Q Vault.
 
 ## Development
 
-- Rust toolchain 1.88 or newer.
+- Rust 1.90 or newer for the desktop application (the library crate declares Rust 1.88).
 - Keep the cryptographic boundary narrow: all cryptographic operations belong
   to the reviewed `nexusq-core` API.
 - Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,

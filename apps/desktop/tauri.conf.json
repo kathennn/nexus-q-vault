@@ -1,13 +1,41 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "NEXUS-Q Vault",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "identifier": "org.nexusq.vault",
-  "build": { "frontendDist": "ui" },
+  "build": {
+    "frontendDist": "ui"
+  },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "title": "NEXUS-Q Vault", "width": 1440, "height": 940, "minWidth": 1024, "minHeight": 700, "resizable": true }],
-    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:" }
+    "windows": [
+      {
+        "title": "NEXUS-Q Vault",
+        "width": 1440,
+        "height": 940,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    }
   },
-  "bundle": { "active": false, "targets": "all", "icon": ["icons/icon.png", "icons/icon.ico"] }
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "publisher": "NEXUS-Q Vault contributors",
+    "homepage": "https://nexus-q.link",
+    "category": "Utility",
+    "shortDescription": "Local-first encrypted file vault",
+    "longDescription": "Protect local files and folders with a desktop vault and separately encrypted recovery backups.",
+    "copyright": "Copyright (c) 2026 NEXUS-Q Vault contributors",
+    "license": "MIT"
+  }
 }

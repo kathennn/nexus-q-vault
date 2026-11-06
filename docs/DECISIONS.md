@@ -1,11 +1,11 @@
 # Architecture decisions
 
 ## ADR-001 — One cryptographic engine
-**Status:** accepted in principle; integration spike only.
+**Status:** accepted for the alpha; supply-chain review remains open.
 
 NEXUS-Q Vault delegates cryptographic operations, vault container handling, key lifecycle and backup encryption to `nexusq-core`. The app must not add a second crypto provider or custom file encryption format. A narrow Rust application layer translates user intent into core API calls.
 
-The spike uses a sibling source checkout via Cargo path dependency. Before public release, dependency provenance and version pinning must be formalized (immutable revision or reviewed published release, lockfile and supply-chain evidence).
+The desktop crate uses a sibling source checkout through a Cargo path dependency for local builds. CI and the alpha release workflow fetch the engine at immutable commit `efe486603af266c379131526d8320a0584254ce4`, and the desktop lockfile is committed. This pins the source revision used by those workflows; independent provenance verification, signed build attestations and a reviewed published engine dependency remain open supply-chain work.
 
 ## ADR-002 — Local-first MVP
 **Status:** accepted. No account, cloud, synchronization, sharing or network service is required for the MVP.
@@ -14,7 +14,7 @@ The spike uses a sibling source checkout via Cargo path dependency. Before publi
 **Status:** accepted for MVP. Encryption never deletes the original automatically. Secure deletion cannot be guaranteed on modern filesystems and SSDs. Any future cleanup action must explain this limitation and require confirmation.
 
 ## ADR-004 — MIT license
-**Status:** provisional project choice. MIT is simple and permissive. Revisit before first public release if contributors prefer stronger copyleft. License selection does not change licenses or notices required by dependencies.
+**Status:** accepted for the public alpha. MIT is simple and permissive. Any future license change requires explicit project governance and cannot change licenses or notices required by dependencies.
 
 ## ADR-005 — Do not paper over current file I/O limitations
 **Status:** accepted for the integration phase; release gate remains open.
@@ -30,7 +30,7 @@ The application-level tests cover wrong vault passwords, successful byte-for-byt
 
 The cross-platform desktop shell uses Tauri 2 with a Rust command layer. The frontend handles presentation and user input only; it does not implement or select cryptographic algorithms. All vault, file-envelope and backup operations call `nexusq-core` directly. The unlocked `Session` stays in Rust process state behind a mutex and is never serialized to the webview. Password inputs are transferred only for the operation and wrapped in zeroizing byte buffers on the Rust side. Password fields are cleared after each submitted attempt and when the vault is locked. JavaScript strings cannot be reliably zeroized and may remain transiently in the webview runtime until garbage collection; the app does not persist them.
 
-The initial folder format is documented in [FOLDER_FORMAT_V1.md](FOLDER_FORMAT_V1.md). The prototype uses native file/folder pickers via `tauri-plugin-dialog` and still permits manual path editing. Installer bundling remains disabled. Individual files can be encrypted to sidecar `.nqx` envelopes. Folder encryption stores encrypted objects under opaque `nqk_file_*` identifiers and publishes a version-1 `manifest.nqm` envelope last; filenames, relative paths and plaintext sizes are inside the authenticated manifest. The manifest envelope uses a fixed public metadata label and no filenames. Each object envelope authenticates its opaque object identifier in public metadata; restore verifies this binding so swapping two ciphertext objects is rejected. Symlinks and non-portable paths are rejected; empty directories are omitted; each file is capped at 32 MiB while the engine remains in-memory. Folder object files and `.nqx` sidecars are not included in the `.nqb` vault-key backup and must be backed up separately. Dialog cancellation behavior, close/lock lifecycle, platform-specific permission semantics, dependency provenance, installer signing and accessibility remain open work. This ADR does not make the prototype production-ready.
+The initial folder format is documented in [FOLDER_FORMAT_V1.md](FOLDER_FORMAT_V1.md). The prototype uses native file/folder pickers via `tauri-plugin-dialog` and still permits manual path editing. Native installer bundling is enabled for the alpha release workflow (Linux `.deb`/AppImage, Windows MSI/NSIS, and macOS DMG); code signing, notarization and broader platform validation remain open. Individual files can be encrypted to sidecar `.nqx` envelopes. Folder encryption stores encrypted objects under opaque `nqk_file_*` identifiers and publishes a version-1 `manifest.nqm` envelope last; filenames, relative paths and plaintext sizes are inside the authenticated manifest. The manifest envelope uses a fixed public metadata label and no filenames. Each object envelope authenticates its opaque object identifier in public metadata; restore verifies this binding so swapping two ciphertext objects is rejected. Symlinks and non-portable paths are rejected; empty directories are omitted; each file is capped at 32 MiB while the engine remains in-memory. Folder object files and `.nqx` sidecars are not included in the `.nqb` vault-key backup and must be backed up separately. Dialog cancellation behavior, close/lock lifecycle, platform-specific permission semantics, dependency provenance, installer signing and accessibility remain open work. This ADR does not make the prototype production-ready.
 
 # ADR-007 — Native desktop file and folder dialogs
 **Status:** accepted for the desktop prototype; platform review pending.
