@@ -20,7 +20,7 @@ NEXUS-Q Vault aims to let people without security expertise protect local files 
 ## MVP scope
 The MVP is one use case: a **local encrypted file vault**. It covers vault creation, file encryption/decryption and backup restoration. Synchronization, cloud services, sharing links, teams and enterprise management are explicitly out of scope.
 
-See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md) and [docs/DECISIONS.md](docs/DECISIONS.md).
+See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [docs/DECISIONS.md](docs/DECISIONS.md) and the [backup-based recovery proposal](docs/RECOVERY_DESIGN.md).
 
 ## Cryptographic boundary
 `nexusq-core` is the sole cryptographic engine. Vault must not introduce parallel cryptographic implementations, custom key derivation, custom encryption formats or silent fallback paths. The integration spike uses the public `Vault`, `Session`, and `storage::backup` APIs from the sibling `nexus-q` checkout. This local path is a development convenience; a published build must pin a reviewed release or immutable revision and verify its provenance.
@@ -28,7 +28,17 @@ See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md) and [docs/DECIS
 The engine revision pinned by CI is `efe486603af266c379131526d8320a0584254ce4`. Its file helpers publish outputs via a same-directory temporary file and atomic no-clobber hard link; on Unix the file is created with mode `0600` and the containing directory is synced. This is create-only publication, not atomic replacement. Non-Unix permission and durability semantics still require platform-specific validation. The engine's current default provider is RustCrypto. Experimental native backends are not enabled by this project. Exact algorithms and security claims must be tied to the engine version and its published documentation; "post-quantum" does not mean every operation or threat is quantum-proof.
 
 ## Repository status
-This repository currently contains project governance and a Rust integration spike. The desktop UI, recovery-phrase workflow, file manifest, format policy, release pipeline and independent security review are not complete.
+This repository contains project governance, a Rust integration spike and an early Tauri 2 desktop prototype (`apps/desktop`). The prototype currently supports vault create/open/lock, single-file `.nqx` encryption/decryption and encrypted vault-key backup export/import through `nexusq-core`. Backups do not bundle `.nqx` payload files; those must be preserved separately. It is not yet user-tested or production-ready. Native file pickers, recovery workflow, encrypted folder manifest, format migration policy, release pipeline and independent security review are not complete.
+
+## Run the desktop prototype
+
+The desktop app uses Tauri 2 and requires the platform webview/build prerequisites documented by Tauri. From this repository root, with the sibling `../nexus-q` checkout at the revision pinned by this project:
+
+```sh
+cargo run --manifest-path apps/desktop/Cargo.toml
+```
+
+The current prototype accepts filesystem paths manually. Native file/folder pickers and installer bundling are not enabled yet. The desktop crate currently requires Rust 1.90 or newer; the cryptographic engine's own MSRV remains governed by `nexusq-core`.
 
 ## Build the spike
 Prerequisites: Rust 1.88+ and a sibling checkout of `../nexus-q` containing the matching `nexusq-core` workspace.

@@ -34,3 +34,36 @@ jobs:
 
       - name: Run tests
         run: cargo test --locked
+
+  desktop:
+    name: Desktop build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out NEXUS-Q Vault
+        uses: actions/checkout@v5
+
+      - name: Install Linux desktop prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check out pinned nexus-q engine
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/lecodev-26/nexus-q.git ../nexus-q
+          git -C ../nexus-q checkout efe486603af266c379131526d8320a0584254ce4
+
+      - name: Check desktop formatting
+        run: cargo fmt --manifest-path apps/desktop/Cargo.toml -- --check
+
+      - name: Check desktop application
+        run: cargo clippy --manifest-path apps/desktop/Cargo.toml --locked --all-targets -- -D warnings

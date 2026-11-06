@@ -1,0 +1,15 @@
+[package]
+name = "nexus-q-vault-desktop"
+version = "0.1.0"
+description = "NEXUS-Q Vault cross-platform desktop application"
+edition = "2024"
+rust-version = "1.90"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = "2.7.4"
+
+[dependencies]
+nexusq-core = { path = "../../../nexus-q/crates/nexusq-core" }
+tauri = "2.12.5"
+zeroize = "1.8"

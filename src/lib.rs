@@ -190,4 +190,43 @@ mod tests {
         assert!(!plaintext_output.exists());
         session.lock().unwrap();
     }
+
+    #[test]
+    fn backup_recovers_vault_with_a_new_password() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("recovery-source.bin");
+        let work = dir.path().join("recovery-work");
+        let original = b"backup recovery with independent credentials\0\xff";
+        std::fs::write(&input, original).unwrap();
+
+        let artifacts = run_roundtrip(
+            &work,
+            &input,
+            b"original-vault-password",
+            b"independent-backup-passphrase",
+        )
+        .unwrap();
+
+        let recovered_path = work.join("recovered-with-new-password.nqv");
+        let recovered = backup::import(
+            &artifacts.backup_path,
+            b"independent-backup-passphrase",
+            &recovered_path,
+            b"new-vault-password",
+        )
+        .unwrap();
+
+        assert!(matches!(
+            recovered.unlock(b"original-vault-password"),
+            Err(VaultError::WrongPassword)
+        ));
+
+        let session = recovered.unlock(b"new-vault-password").unwrap();
+        let restored_file = work.join("recovered-plaintext.bin");
+        session
+            .decrypt_file(&artifacts.encrypted_file, &restored_file)
+            .unwrap();
+        assert_eq!(std::fs::read(restored_file).unwrap(), original);
+        session.lock().unwrap();
+    }
 }

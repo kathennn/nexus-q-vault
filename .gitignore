@@ -1,4 +1,6 @@
 /target
+**/target/
+/apps/desktop/gen/
 .DS_Store
 *.nqv
 *.nqb

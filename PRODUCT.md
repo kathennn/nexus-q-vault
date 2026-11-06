@@ -33,6 +33,10 @@ A **local encrypted file vault**. No network account or cloud service is require
 - Manifest: encrypted mapping of opaque identifiers to file metadata and content references.
 - Activity: local-only privacy-minimized events; never include file contents, names, absolute paths, secrets or recovery material.
 
+## Current prototype limitations
+
+The desktop prototype currently encrypts individual files to sidecar `.nqx` envelopes and stores key records in a separate `.nqv` vault. It does not yet provide an encrypted folder/manifest. Its `.nqb` backup contains vault/key state, not the `.nqx` file payloads; users must preserve both separately. The backup-based recovery journey is a proposal in [docs/RECOVERY_DESIGN.md](docs/RECOVERY_DESIGN.md), not yet user-tested or approved for beta.
+
 ## Explicitly out of scope
 Synchronization, cloud storage, sharing links, collaboration, teams, enterprise policy, remote administration and multi-device identity.
 

@@ -23,4 +23,11 @@ The pinned `nexusq-core` revision (`efe486603af266c379131526d8320a0584254ce4`) s
 
 NEXUS-Q Vault will keep using the engine as its only cryptographic implementation. It will not introduce a parallel envelope format or home-grown streaming cipher to compensate. Before beta, the integration still needs bounded resource use, explicit platform guarantees, overwrite UX/policy, and broader filesystem fault-injection tests. The upstream implementation is in `nexus-q` commit `efe4866`; it is not an independent security audit.
 
-The application-level tests now cover wrong vault passwords, successful byte-for-byte file and backup roundtrips, and tampered-envelope rejection without creating a plaintext output. These tests do not establish crash consistency, large-file safety, or independent security review.
+The application-level tests cover wrong vault passwords, successful byte-for-byte file and backup roundtrips, and tampered-envelope rejection without creating a plaintext output. These tests do not establish crash consistency, large-file safety, or independent security review.
+
+## ADR-006 — Tauri desktop boundary
+**Status:** accepted for the desktop prototype; security review pending.
+
+The cross-platform desktop shell uses Tauri 2 with a Rust command layer. The frontend handles presentation and user input only; it does not implement or select cryptographic algorithms. All vault, file-envelope and backup operations call `nexusq-core` directly. The unlocked `Session` stays in Rust process state behind a mutex and is never serialized to the webview. Password inputs are transferred only for the operation, wrapped in zeroizing byte buffers on the Rust side, and are not persisted by the app.
+
+The first prototype uses manually entered paths and disables installer bundling. It encrypts individual files to sidecar `.nqx` envelopes; it does not yet implement an encrypted folder manifest. Its encrypted backup contains the vault container/key state, not the sidecar file payloads. Native file dialogs, close/lock lifecycle behavior, platform-specific permission semantics, dependency provenance, installer signing and accessibility remain open work. This ADR does not make the prototype production-ready.
