@@ -8,6 +8,8 @@ const lockButton = $("lock-button");
 function showMessage(message, isError = false) {
   feedback.hidden = false;
   feedback.classList.toggle("error", isError);
+  feedback.setAttribute("role", isError ? "alert" : "status");
+  feedback.setAttribute("aria-live", isError ? "assertive" : "polite");
   feedback.textContent = message;
 }
 
@@ -33,15 +35,20 @@ function submit(formId, command, fields) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const button = form.querySelector('button[type="submit"]');
+    const originalLabel = button.textContent;
     button.disabled = true;
+    button.textContent = "Procesando…";
+    form.setAttribute("aria-busy", "true");
+    showMessage("Operación en curso. Espera a que termine.");
     try {
       const args = Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]));
       showMessage(await invoke(command, args));
-      await refreshStatus();
     } catch (error) {
       showMessage(String(error), true);
     } finally {
       clearSecrets(form);
+      form.removeAttribute("aria-busy");
+      button.textContent = originalLabel;
       button.disabled = false;
       await refreshStatus();
     }
@@ -57,7 +64,9 @@ function childPath(parent, childName) {
 function bindPicker(buttonId, inputId, command, kind, transform = (path) => path) {
   const button = $(buttonId);
   button.addEventListener("click", async () => {
+    const originalLabel = button.textContent;
     button.disabled = true;
+    button.textContent = "Abriendo…";
     try {
       const selectedPath = await invoke(command, { kind });
       if (selectedPath) {
@@ -67,6 +76,7 @@ function bindPicker(buttonId, inputId, command, kind, transform = (path) => path
     } catch (error) {
       showMessage(String(error), true);
     } finally {
+      button.textContent = originalLabel;
       button.disabled = false;
       await refreshStatus();
     }
@@ -98,13 +108,16 @@ bindPicker("restore-backup-path-picker", "restore-backup-path", "pick_file_path"
 bindPicker("restore-vault-path-picker", "restore-vault-path", "pick_save_path", "vault");
 
 lockButton.addEventListener("click", async () => {
+  const originalLabel = lockButton.textContent;
   lockButton.disabled = true;
+  lockButton.textContent = "Bloqueando…";
   try {
     showMessage(await invoke("lock_vault"));
   } catch (error) {
     showMessage(String(error), true);
   } finally {
     document.querySelectorAll('input[type="password"]').forEach((input) => { input.value = ""; });
+    lockButton.textContent = originalLabel;
     await refreshStatus();
   }
 });

@@ -15,7 +15,7 @@
         <div class="brand-mark" aria-hidden="true">NQ</div>
         <div><p class="eyebrow">LOCAL-FIRST SECURITY</p><h1>NEXUS-Q <span>Vault</span></h1></div>
       </div>
-      <div class="status-wrap"><span id="status-dot" class="status-dot"></span><span id="vault-status">Bloqueado</span></div>
+      <div class="status-wrap" role="status" aria-live="polite" aria-atomic="true"><span id="status-dot" class="status-dot" aria-hidden="true"></span><span id="vault-status">Bloqueado</span></div>
     </header>
 
     <section class="intro">
@@ -99,10 +99,10 @@
           </div>
           <label for="encrypt-folder-output">Nueva carpeta vault</label>
           <div class="path-row">
-            <input id="encrypt-folder-output" required placeholder="/ruta/NEXUS-Q-FolderVault">
+            <input id="encrypt-folder-output" required placeholder="/ruta/NEXUS-Q-FolderVault" aria-describedby="encrypt-folder-output-help">
             <button id="encrypt-folder-output-picker" class="picker" type="button" aria-label="Elegir carpeta contenedora del vault">Examinar</button>
           </div>
-          <p>Se propone un nombre dentro de la carpeta elegida; puedes editar la ruta.</p>
+          <p id="encrypt-folder-output-help">Se propone un nombre dentro de la carpeta elegida; puedes editar la ruta.</p>
           <button class="secondary" type="submit">Cifrar carpeta completa</button>
         </form>
 
@@ -115,10 +115,10 @@
           </div>
           <label for="decrypt-folder-output">Destino restaurado</label>
           <div class="path-row">
-            <input id="decrypt-folder-output" required placeholder="/ruta/Restored-Folder">
+            <input id="decrypt-folder-output" required placeholder="/ruta/Restored-Folder" aria-describedby="decrypt-folder-output-help">
             <button id="decrypt-folder-output-picker" class="picker" type="button" aria-label="Elegir carpeta contenedora del destino">Examinar</button>
           </div>
-          <p>Se propone una carpeta nueva dentro de la ubicación elegida.</p>
+          <p id="decrypt-folder-output-help">Se propone una carpeta nueva dentro de la ubicación elegida.</p>
           <button class="secondary" type="submit">Restaurar carpeta completa</button>
         </form>
 
@@ -155,7 +155,7 @@
       </div>
     </section>
 
-    <section id="feedback" class="feedback" aria-live="polite" hidden></section>
+    <section id="feedback" class="feedback" role="status" aria-live="polite" aria-atomic="true" hidden></section>
     <footer><span>NEXUS-Q Vault · Local-first · Sin telemetría</span><span>Desarrollo temprano · No producción</span></footer>
   </main>
 </body>
