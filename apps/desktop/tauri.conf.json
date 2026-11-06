@@ -36,6 +36,11 @@
     "shortDescription": "Local-first encrypted file vault",
     "longDescription": "Protect local files and folders with a desktop vault and separately encrypted recovery backups.",
     "copyright": "Copyright (c) 2026 NEXUS-Q Vault contributors",
-    "license": "MIT"
+    "license": "MIT",
+    "windows": {
+      "wix": {
+        "version": "0.1.0.1"
+      }
+    }
   }
 }

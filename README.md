@@ -111,7 +111,7 @@ Pre-release installers are published on the [GitHub Releases page](https://githu
 | Platform | Release artifact |
 |---|---|
 | Linux | `.deb` and `.AppImage` |
-| Windows | `.msi` and `.exe` (NSIS installer) |
+| Windows | `.msi` (WiX) and `.exe` (NSIS installer) |
 | macOS | `.dmg` |
 
 Only download builds from this repository's Releases page. Each release includes a `SHA256SUMS.txt` file for accidental-corruption checks (checksums are not digital signatures). Alpha builds may contain platform-specific issues. Code signing/notarization and independent artifact provenance are not yet provided; your operating system may show an installation warning.
