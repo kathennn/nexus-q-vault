@@ -2,7 +2,7 @@
 
 - [x] Foundation: repository structure, license, governance and initial threat model.
 - [x] MVP definition and nexusq-core integration spike.
-- [ ] Public repository and contribution templates.
+- [x] Public repository and contribution templates.
 - [ ] Security-reviewed vault/file/backup adapter and automated integration tests.
 - [ ] Recovery design and user-tested recovery flow.
 - [ ] Encrypted folder manifest and format migration policy.

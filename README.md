@@ -48,6 +48,10 @@ The spike is a library integration test, not a finished user-facing application.
 - Threat model: [THREAT_MODEL.md](THREAT_MODEL.md).
 - Decisions: [docs/DECISIONS.md](docs/DECISIONS.md).
 
+## Current file-operation constraints
+
+The pinned engine currently reads and writes complete `.nqx` envelopes in memory; it does not provide streaming file encryption. Its file helpers also use direct filesystem writes rather than an atomic temp-file/rename transaction for every encrypted or restored file. Consequently, the current integration is a correctness spike for modest file sizes, not yet a safe general-purpose folder vault. The desktop MVP must not claim crash-safe output replacement or large-file support until the engine/storage boundary has been reviewed and these guarantees are implemented and tested. Authentication failures are tested to produce no plaintext output; that does not make filesystem writes atomic.
+
 ## Prepare the local engine checkout
 
 The current spike uses a sibling path dependency, so clone the exact engine

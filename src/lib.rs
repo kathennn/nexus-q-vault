@@ -98,4 +98,49 @@ mod tests {
         // Encryption must preserve the source by default.
         assert_eq!(std::fs::read(&input).unwrap(), original);
     }
+
+    #[test]
+    fn wrong_vault_password_is_rejected() {
+        let dir = tempdir().unwrap();
+        let vault_path = dir.path().join("wrong-password.nqv");
+        let password = b"correct-password";
+        Vault::create(&vault_path, password, Some("password test".into())).unwrap();
+
+        let opened = Vault::open(&vault_path).unwrap();
+        let result = opened.unlock(b"incorrect-password");
+
+        assert!(matches!(result, Err(VaultError::WrongPassword)));
+    }
+
+    #[test]
+    fn tampered_envelope_is_rejected_without_plaintext_output() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("source.bin");
+        let work = dir.path().join("work");
+        let original = b"authenticated payload with binary bytes\0\xff";
+        std::fs::write(&input, original).unwrap();
+
+        let artifacts = run_roundtrip(
+            &work,
+            &input,
+            b"test-only-vault-password",
+            b"test-only-backup-passphrase",
+        )
+        .unwrap();
+
+        let mut corrupted = std::fs::read(&artifacts.encrypted_file).unwrap();
+        let last = corrupted.len() - 1;
+        corrupted[last] ^= 0x80;
+        let tampered_path = work.join("tampered.nqx");
+        std::fs::write(&tampered_path, corrupted).unwrap();
+
+        let vault = Vault::open(&artifacts.vault_path).unwrap();
+        let session = vault.unlock(b"test-only-vault-password").unwrap();
+        let plaintext_output = work.join("must-not-exist.bin");
+
+        let result = session.decrypt_file(&tampered_path, &plaintext_output);
+        assert!(matches!(result, Err(VaultError::Envelope(_))));
+        assert!(!plaintext_output.exists());
+        session.lock().unwrap();
+    }
 }

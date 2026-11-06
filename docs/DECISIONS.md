@@ -15,3 +15,12 @@ The spike uses a sibling source checkout via Cargo path dependency. Before publi
 
 ## ADR-004 — MIT license
 **Status:** provisional project choice. MIT is simple and permissive. Revisit before first public release if contributors prefer stronger copyleft. License selection does not change licenses or notices required by dependencies.
+
+## ADR-005 — Do not paper over current file I/O limitations
+**Status:** accepted for the integration phase; release gate remains open.
+
+Inspection of the pinned `nexusq-core` revision (`8708a0ec42c948e33e058de4f5e6afc8b3538125`) confirms that file-envelope helpers load complete inputs and envelopes into memory. They use direct filesystem writes for `.nqx` output and restored plaintext rather than a temp-file, fsync, atomic-rename transaction. The vault and backup writers have stronger atomic-write behavior, but that guarantee must not be generalized to file operations.
+
+NEXUS-Q Vault will keep using the engine as its only cryptographic implementation. It will not introduce a parallel envelope format or home-grown streaming cipher to compensate. Before beta, the integration must have a reviewed file-operation contract covering bounded resource use, atomic destination writes, overwrite policy, permissions on supported platforms, and authenticated failure behavior. If the engine does not provide the required primitives, propose and review an upstream `nexusq-core` change first.
+
+The application-level tests now cover wrong vault passwords, successful byte-for-byte file and backup roundtrips, and tampered-envelope rejection without creating a plaintext output. These tests do not establish crash consistency, large-file safety, or independent security review.
