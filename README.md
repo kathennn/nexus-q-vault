@@ -25,7 +25,7 @@ See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md) and [docs/DECIS
 ## Cryptographic boundary
 `nexusq-core` is the sole cryptographic engine. Vault must not introduce parallel cryptographic implementations, custom key derivation, custom encryption formats or silent fallback paths. The integration spike uses the public `Vault`, `Session`, and `storage::backup` APIs from the sibling `nexus-q` checkout. This local path is a development convenience; a published build must pin a reviewed release or immutable revision and verify its provenance.
 
-The engine's current default provider is RustCrypto. Experimental native backends are not enabled by this project. Exact algorithms and security claims must be tied to the engine version and its published documentation; "post-quantum" does not mean every operation or threat is quantum-proof.
+The engine revision pinned by CI is `efe486603af266c379131526d8320a0584254ce4`. Its file helpers publish outputs via a same-directory temporary file and atomic no-clobber hard link; on Unix the file is created with mode `0600` and the containing directory is synced. This is create-only publication, not atomic replacement. Non-Unix permission and durability semantics still require platform-specific validation. The engine's current default provider is RustCrypto. Experimental native backends are not enabled by this project. Exact algorithms and security claims must be tied to the engine version and its published documentation; "post-quantum" does not mean every operation or threat is quantum-proof.
 
 ## Repository status
 This repository currently contains project governance and a Rust integration spike. The desktop UI, recovery-phrase workflow, file manifest, format policy, release pipeline and independent security review are not complete.
@@ -50,7 +50,7 @@ The spike is a library integration test, not a finished user-facing application.
 
 ## Current file-operation constraints
 
-The pinned engine currently reads and writes complete `.nqx` envelopes in memory; it does not provide streaming file encryption. Its file helpers also use direct filesystem writes rather than an atomic temp-file/rename transaction for every encrypted or restored file. Consequently, the current integration is a correctness spike for modest file sizes, not yet a safe general-purpose folder vault. The desktop MVP must not claim crash-safe output replacement or large-file support until the engine/storage boundary has been reviewed and these guarantees are implemented and tested. Authentication failures are tested to produce no plaintext output; that does not make filesystem writes atomic.
+The pinned engine reads complete inputs and envelopes into memory; it does not provide streaming file encryption or bounded-memory processing. File outputs now use atomic create-only publication: a completed temporary file is linked into place without overwriting an existing destination. On Unix, file data and the parent directory are synced and new files use mode `0600`. This does not provide atomic replacement, secure deletion, or validated permission/durability semantics on every platform. Consequently, the current integration is a correctness spike for modest file sizes, not yet a safe general-purpose folder vault. Large-file support and cross-platform filesystem guarantees remain release gates. Authentication failures are tested to produce no plaintext output.
 
 ## Prepare the local engine checkout
 
@@ -59,7 +59,7 @@ revision used for the integration test:
 
 ```sh
 git clone https://github.com/lecodev-26/nexus-q.git ../nexus-q
-git -C ../nexus-q checkout 8708a0ec42c948e33e058de4f5e6afc8b3538125
+git -C ../nexus-q checkout efe486603af266c379131526d8320a0584254ce4
 cargo test --locked
 ```
 
