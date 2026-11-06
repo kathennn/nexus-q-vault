@@ -1,7 +1,7 @@
 # Security Policy
 
 ## Status
-NEXUS-Q Vault is early development software. It has not received an independent security audit. Do not use it to protect high-value or irreplaceable data.
+NEXUS-Q Vault v0.1.0 is an early-access public release, not a security-audited or production-hardened product. It has not received an independent security audit. Do not rely on it as the sole protection for high-value or irreplaceable data.
 
 ## Reporting a vulnerability
 Do not publish exploitable details in public issues. Until a dedicated private advisory channel and response team are established, contact maintainers through the private vulnerability reporting feature of the repository host (GitHub Security Advisories, when enabled). If unavailable, request a private contact route without including exploit details in a public message.
@@ -16,7 +16,7 @@ Initial targets, not a 24/7 guarantee:
 - Publish an advisory and fixed release when users can reasonably update.
 
 ## Supported versions
-Before the first stable release, only the latest development revision is considered for fixes. There are no production-supported releases yet.
+This is the first public release. Support is best-effort; there are no production-supported versions or guaranteed security response SLAs.
 
 ## Security change control
 Changes to cryptography, key lifecycle, recovery, file parsing, vault format, backup/restore, dependencies and update verification require security review. Document threat-model impact and add regression tests. Never claim an audit, certification, reproducible build or signature verification unless evidence is public and independently checkable.

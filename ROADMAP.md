@@ -25,7 +25,7 @@
   - [ ] Expand to Japanese (ja), Korean (ko), Simplified Chinese (zh-CN) and Traditional Chinese (zh-TW).
   - [ ] Add Arabic (ar), Hindi (hi), Indonesian (id), Turkish (tr), Russian (ru) and other community-requested languages.
   - [ ] Establish translation review guidance so contributed translations are checked for accuracy, consistency, accessibility and security-sensitive terminology.
-- [x] CI for library and desktop checks/builds; cross-platform alpha installer release workflow.
+- [x] CI for library and desktop checks/builds; cross-platform public installer release workflow.
 - [ ] Dependency review, fuzzing, signed releases and reproducible-build investigation.
 - [ ] External security review and community beta.
 - [ ] 1.0 release after recovery, format and update-security criteria are met.

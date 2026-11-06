@@ -21,10 +21,10 @@
   <img alt="Tauri 2" src="https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri">
   <img alt="License MIT" src="https://img.shields.io/badge/license-MIT-green.svg">
   <a href="https://github.com/lecodev-26/nexus-q-vault/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/lecodev-26/nexus-q-vault/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/lecodev-26/nexus-q-vault/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/lecodev-26/nexus-q-vault?include_prereleases"></a>
+  <a href="https://github.com/lecodev-26/nexus-q-vault/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/lecodev-26/nexus-q-vault"></a>
 </p>
 
-> **Early access — alpha software.** This project has not received an independent security audit. Do not use it as the only copy of important data or as the sole protection for high-value information. Read the [security limitations](#security-status-and-limitations) before use.
+> **Public release — v0.1.0 (early access).** This project has not received an independent security audit. Do not use it as the only copy of important data or as the sole protection for high-value information. Read the [security limitations](#security-status-and-limitations) before use.
 
 NEXUS-Q Vault is an open-source desktop application for protecting local files. It is designed around a simple idea: encryption and vault data should stay on the computer you control, without requiring a cloud account or a hosted service.
 
@@ -76,7 +76,7 @@ The backup passphrase is separate from the vault password. A backup restores vau
 
 ## Current capabilities
 
-| Area | Available in this alpha |
+| Area | Available in v0.1.0 |
 |---|---|
 | Vault lifecycle | Create, open, unlock and lock a local vault |
 | Individual files | Encrypt to `.nqx`; decrypt to a new destination |
@@ -106,7 +106,7 @@ See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [SECURITY.md](
 
 ## Download
 
-Pre-release installers are published on the [GitHub Releases page](https://github.com/lecodev-26/nexus-q-vault/releases).
+The public v0.1.0 installers are published on the [GitHub Releases page](https://github.com/lecodev-26/nexus-q-vault/releases).
 
 | Platform | Release artifact |
 |---|---|
@@ -114,7 +114,7 @@ Pre-release installers are published on the [GitHub Releases page](https://githu
 | Windows | `.msi` (WiX) and `.exe` (NSIS installer) |
 | macOS | `.dmg` |
 
-Only download builds from this repository's Releases page. Each release includes a `SHA256SUMS.txt` file for accidental-corruption checks (checksums are not digital signatures). Alpha builds may contain platform-specific issues. Code signing/notarization and independent artifact provenance are not yet provided; your operating system may show an installation warning.
+Only download builds from this repository's Releases page. Each release includes a `SHA256SUMS.txt` file for accidental-corruption checks (checksums are not digital signatures). This early-access release may contain platform-specific issues. Code signing/notarization and independent artifact provenance are not yet provided; your operating system may show an installation warning.
 
 On Linux, verify downloaded files with `sha256sum -c SHA256SUMS.txt`; on macOS use `shasum -a 256 -c SHA256SUMS.txt`. On Windows, compare `certutil -hashfile <installer> SHA256` with the matching entry. A matching checksum detects accidental changes but does not authenticate who built the installer.
 
