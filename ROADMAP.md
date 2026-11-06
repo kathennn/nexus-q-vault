@@ -18,10 +18,18 @@
   - [x] Initial accessibility pass: semantic status/errors, labelled picker controls, busy states, keyboard focus and reduced-motion support.
   - [x] Password visibility controls; visibility resets when forms clear secrets or the vault is locked.
   - [ ] User testing, onboarding polish and full accessibility review.
+- [ ] Internationalization and community translations.
+  - [ ] Establish a maintainable localization structure, language selection and English fallback.
+  - [ ] Add Catalan (ca) alongside the existing English and Spanish interface.
+  - [ ] Add French (fr), German (de), Portuguese (pt) and Italian (it) in subsequent releases.
+  - [ ] Expand to Japanese (ja), Korean (ko), Simplified Chinese (zh-CN) and Traditional Chinese (zh-TW).
+  - [ ] Add Arabic (ar), Hindi (hi), Indonesian (id), Turkish (tr), Russian (ru) and other community-requested languages.
+  - [ ] Establish translation review guidance so contributed translations are checked for accuracy, consistency, accessibility and security-sensitive terminology.
 - [x] CI for library and desktop checks/builds; cross-platform alpha installer release workflow.
 - [ ] Dependency review, fuzzing, signed releases and reproducible-build investigation.
 - [ ] External security review and community beta.
 - [ ] 1.0 release after recovery, format and update-security criteria are met.
 
-A roadmap item is not complete merely because a prototype exists. Security
-milestones require published evidence and review.
+Language order is a staged plan, not a promise that every language will ship in a specific release. Priorities may change based on community demand and the availability of reviewers fluent in each language. English remains the fallback until a translation is complete and reviewed.
+
+A roadmap item is not complete merely because a prototype exists. Security milestones require published evidence and review.
