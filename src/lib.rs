@@ -113,6 +113,53 @@ mod tests {
     }
 
     #[test]
+    fn backup_rejects_wrong_passphrase() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("source.bin");
+        let work = dir.path().join("work");
+        std::fs::write(&input, b"backup authentication test").unwrap();
+
+        let artifacts = run_roundtrip(
+            &work,
+            &input,
+            b"test-only-vault-password",
+            b"correct-backup-passphrase",
+        )
+        .unwrap();
+
+        let imported_path = work.join("must-not-import.nqv");
+        let result = backup::import(
+            &artifacts.backup_path,
+            b"incorrect-backup-passphrase",
+            &imported_path,
+            b"test-only-vault-password",
+        );
+
+        assert!(result.is_err());
+        assert!(!imported_path.exists());
+    }
+
+    #[test]
+    fn corrupted_vault_body_is_rejected() {
+        let dir = tempdir().unwrap();
+        let vault_path = dir.path().join("corrupted.nqv");
+        Vault::create(
+            &vault_path,
+            b"test-only-vault-password",
+            Some("corruption test".into()),
+        )
+        .unwrap();
+
+        let mut bytes = std::fs::read(&vault_path).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0x01;
+        std::fs::write(&vault_path, bytes).unwrap();
+
+        let opened = Vault::open(&vault_path).unwrap();
+        assert!(opened.unlock(b"test-only-vault-password").is_err());
+    }
+
+    #[test]
     fn tampered_envelope_is_rejected_without_plaintext_output() {
         let dir = tempdir().unwrap();
         let input = dir.path().join("source.bin");
