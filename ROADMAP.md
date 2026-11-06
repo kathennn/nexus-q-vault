@@ -14,6 +14,7 @@
   - [x] UI commands for individual files, folder encryption/restoration and encrypted key backups.
   - [x] Native file/folder pickers through Tauri's cross-platform dialog plugin.
   - [x] Initial accessibility pass: semantic status/errors, labelled picker controls, busy states, keyboard focus and reduced-motion support.
+  - [x] Password visibility controls; visibility resets when forms clear secrets or the vault is locked.
   - [ ] User testing, onboarding polish and full accessibility review.
 - [ ] CI, dependency review, fuzzing and reproducible-build investigation.
 - [ ] External security review and community beta.

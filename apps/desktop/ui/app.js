@@ -14,7 +14,27 @@ function showMessage(message, isError = false) {
 }
 
 function clearSecrets(form) {
-  form.querySelectorAll('input[type="password"]').forEach((input) => { input.value = ""; });
+  form.querySelectorAll(".secret-row").forEach((row) => {
+    const input = row.querySelector("input");
+    const toggle = row.querySelector("button");
+    input.value = "";
+    input.type = "password";
+    toggle.textContent = "Mostrar";
+    toggle.setAttribute("aria-pressed", "false");
+    toggle.setAttribute("aria-label", "Mostrar contraseña");
+  });
+}
+
+function bindSecretToggle(buttonId, inputId) {
+  const button = $(buttonId);
+  const input = $(inputId);
+  button.addEventListener("click", () => {
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    button.textContent = reveal ? "Ocultar" : "Mostrar";
+    button.setAttribute("aria-pressed", String(reveal));
+    button.setAttribute("aria-label", `${reveal ? "Ocultar" : "Mostrar"} contraseña`);
+  });
 }
 
 async function refreshStatus() {
@@ -92,6 +112,12 @@ submit("decrypt-folder-form", "decrypt_folder", [["vaultFolderPath", "decrypt-fo
 submit("backup-form", "export_backup", [["backupPath", "backup-path"], ["backupPassphrase", "backup-password"]]);
 submit("restore-form", "import_backup", [["backupPath", "restore-backup-path"], ["backupPassphrase", "restore-backup-password"], ["newVaultPath", "restore-vault-path"], ["newVaultPassword", "restore-vault-password"]]);
 
+bindSecretToggle("create-password-toggle", "create-password");
+bindSecretToggle("open-password-toggle", "open-password");
+bindSecretToggle("backup-password-toggle", "backup-password");
+bindSecretToggle("restore-backup-password-toggle", "restore-backup-password");
+bindSecretToggle("restore-vault-password-toggle", "restore-vault-password");
+
 bindPicker("create-path-picker", "create-path", "pick_save_path", "vault");
 bindPicker("open-path-picker", "open-path", "pick_file_path", "vault");
 bindPicker("encrypt-path-picker", "encrypt-path", "pick_file_path", "any");
@@ -116,7 +142,15 @@ lockButton.addEventListener("click", async () => {
   } catch (error) {
     showMessage(String(error), true);
   } finally {
-    document.querySelectorAll('input[type="password"]').forEach((input) => { input.value = ""; });
+    document.querySelectorAll(".secret-row").forEach((row) => {
+      const input = row.querySelector("input");
+      const toggle = row.querySelector("button");
+      input.value = "";
+      input.type = "password";
+      toggle.textContent = "Mostrar";
+      toggle.setAttribute("aria-pressed", "false");
+      toggle.setAttribute("aria-label", "Mostrar contraseña");
+    });
     lockButton.textContent = originalLabel;
     await refreshStatus();
   }

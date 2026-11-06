@@ -39,7 +39,7 @@
             <button id="create-path-picker" class="picker" type="button" aria-label="Elegir ubicación del nuevo vault">Examinar</button>
           </div>
           <label for="create-password">Contraseña del vault</label>
-          <input id="create-password" type="password" minlength="12" required placeholder="Mínimo 12 bytes" autocomplete="new-password">
+          <div class="secret-row"><input id="create-password" type="password" minlength="12" required placeholder="Mínimo 12 bytes" autocomplete="new-password"><button id="create-password-toggle" class="reveal" type="button" aria-controls="create-password" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
           <button class="primary" type="submit">Crear y desbloquear</button>
         </form>
       </article>
@@ -53,7 +53,7 @@
             <button id="open-path-picker" class="picker" type="button" aria-label="Buscar un vault">Examinar</button>
           </div>
           <label for="open-password">Contraseña</label>
-          <input id="open-password" type="password" required placeholder="Tu contraseña" autocomplete="current-password">
+          <div class="secret-row"><input id="open-password" type="password" required placeholder="Tu contraseña" autocomplete="current-password"><button id="open-password-toggle" class="reveal" type="button" aria-controls="open-password" aria-pressed="false">Mostrar</button></div>
           <button class="secondary" type="submit">Desbloquear</button>
         </form>
       </article>
@@ -130,7 +130,7 @@
             <button id="backup-path-picker" class="picker" type="button" aria-label="Elegir destino del backup">Examinar</button>
           </div>
           <label for="backup-password">Contraseña del backup</label>
-          <input id="backup-password" type="password" minlength="12" required placeholder="Mínimo 12 bytes" autocomplete="new-password">
+          <div class="secret-row"><input id="backup-password" type="password" minlength="12" required placeholder="Mínimo 12 bytes" autocomplete="new-password"><button id="backup-password-toggle" class="reveal" type="button" aria-controls="backup-password" aria-pressed="false">Mostrar</button></div>
           <button class="secondary" type="submit">Crear backup de claves</button>
         </form>
 
@@ -142,14 +142,14 @@
             <button id="restore-backup-path-picker" class="picker" type="button" aria-label="Seleccionar backup">Examinar</button>
           </div>
           <label for="restore-backup-password">Contraseña del backup</label>
-          <input id="restore-backup-password" type="password" minlength="12" required autocomplete="current-password">
+          <div class="secret-row"><input id="restore-backup-password" type="password" minlength="12" required autocomplete="current-password"><button id="restore-backup-password-toggle" class="reveal" type="button" aria-controls="restore-backup-password" aria-pressed="false">Mostrar</button></div>
           <label for="restore-vault-path">Ruta del nuevo vault</label>
           <div class="path-row">
             <input id="restore-vault-path" required placeholder="/ruta/vault-restaurado.nqv">
             <button id="restore-vault-path-picker" class="picker" type="button" aria-label="Elegir ubicación del vault restaurado">Examinar</button>
           </div>
           <label for="restore-vault-password">Nueva contraseña del vault</label>
-          <input id="restore-vault-password" type="password" minlength="12" required autocomplete="new-password">
+          <div class="secret-row"><input id="restore-vault-password" type="password" minlength="12" required autocomplete="new-password"><button id="restore-vault-password-toggle" class="reveal" type="button" aria-controls="restore-vault-password" aria-pressed="false">Mostrar</button></div>
           <button class="secondary" type="submit">Restaurar en nuevo vault</button>
         </form>
       </div>
