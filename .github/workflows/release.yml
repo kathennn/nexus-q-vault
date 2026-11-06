@@ -131,6 +131,11 @@ jobs:
           path: release-assets
           merge-multiple: true
 
+      - name: Flatten installer artifacts
+        run: |
+          find release-assets -mindepth 2 -type f -exec mv -t release-assets -- {} +
+          find release-assets -mindepth 1 -type d -empty -delete
+
       - name: Generate SHA-256 checksums
         run: |
           cd release-assets
