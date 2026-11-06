@@ -470,7 +470,9 @@ name = "nexus-q-vault-spike"
 version = "0.1.0"
 dependencies = [
  "nexusq-core",
+ "serde",
  "tempfile",
+ "zeroize",
 ]
 
 [[package]]

@@ -14,7 +14,7 @@ A **local encrypted file vault**. No network account or cloud service is require
 ## MVP requirements
 - Create, open, lock and unlock a versioned local vault.
 - Encrypt and decrypt individual files through nexusq-core.
-- Protect folder contents through a versioned encrypted manifest (not implemented).
+- Protect folder contents through a versioned encrypted manifest (implemented in the prototype; format migration and security review pending).
 - Create, verify and restore an encrypted backup.
 - Detect corruption and fail closed: never return partial plaintext.
 - Make export/migration possible without a proprietary service.
@@ -35,7 +35,7 @@ A **local encrypted file vault**. No network account or cloud service is require
 
 ## Current prototype limitations
 
-The desktop prototype currently encrypts individual files to sidecar `.nqx` envelopes and stores key records in a separate `.nqv` vault. It does not yet provide an encrypted folder/manifest. Its `.nqb` backup contains vault/key state, not the `.nqx` file payloads; users must preserve both separately. The backup-based recovery journey is a proposal in [docs/RECOVERY_DESIGN.md](docs/RECOVERY_DESIGN.md), not yet user-tested or approved for beta.
+The desktop prototype encrypts individual files to sidecar `.nqx` envelopes and can encrypt folders into `manifest.nqm` plus `objects/<opaque-id>.nqx`. Original names and relative paths are inside the authenticated manifest envelope; object names are opaque. It rejects symlinks, omits empty directories, accepts only portable UTF-8 paths and limits each file to 32 MiB. Its `.nqb` backup contains vault/key state, not the `.nqx` payloads or folder object directories; users must preserve those separately. The manifest has an initial version number, but migration/upgrade behavior is not yet implemented; see [folder format v1](docs/FOLDER_FORMAT_V1.md). The backup-based recovery journey is a proposal in [docs/RECOVERY_DESIGN.md](docs/RECOVERY_DESIGN.md), not yet user-tested or approved for beta.
 
 ## Explicitly out of scope
 Synchronization, cloud storage, sharing links, collaboration, teams, enterprise policy, remote administration and multi-device identity.

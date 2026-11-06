@@ -1,8 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use nexus_q_vault_spike::folder_manifest::{
+    decrypt_folder as decrypt_folder_from_vault, encrypt_folder as encrypt_folder_to_vault,
+};
 use nexusq_core::{
     storage::backup,
-    vault::{Algorithm, KeyStatus, Purpose, Session, Vault},
+    vault::{Algorithm, KeyId, KeyStatus, Purpose, Session, Vault},
 };
 use std::sync::Mutex;
 use tauri::State;
@@ -28,6 +31,14 @@ fn active_session<'a>(
         return Err("Primero debes desbloquear un vault".into());
     }
     Ok(guard)
+}
+
+fn active_file_key(session: &Session) -> Result<KeyId, String> {
+    session
+        .list_keys()
+        .find(|record| record.purpose() == Purpose::Encrypt && record.status() == KeyStatus::Active)
+        .map(|record| record.key_id().clone())
+        .ok_or_else(|| "El vault no tiene una clave activa para cifrar".to_string())
 }
 
 #[tauri::command]
@@ -153,6 +164,48 @@ fn decrypt_file(
 }
 
 #[tauri::command]
+fn encrypt_folder(
+    state: State<'_, AppState>,
+    source_path: String,
+    vault_folder_path: String,
+) -> Result<String, String> {
+    if source_path.trim().is_empty() || vault_folder_path.trim().is_empty() {
+        return Err("Indica la carpeta original y dónde guardar el vault de carpeta".into());
+    }
+    let guard = active_session(&state)?;
+    let session = guard.as_ref().expect("active_session checked");
+    let key_id = active_file_key(session)?;
+    let count = encrypt_folder_to_vault(
+        session,
+        &key_id,
+        std::path::Path::new(&source_path),
+        std::path::Path::new(&vault_folder_path),
+    )
+    .map_err(|error| format!("No se pudo cifrar la carpeta: {error}"))?;
+    Ok(format!("Carpeta cifrada: {count} archivos protegidos"))
+}
+
+#[tauri::command]
+fn decrypt_folder(
+    state: State<'_, AppState>,
+    vault_folder_path: String,
+    destination_path: String,
+) -> Result<String, String> {
+    if vault_folder_path.trim().is_empty() || destination_path.trim().is_empty() {
+        return Err("Indica la carpeta vault y el destino de restauración".into());
+    }
+    let guard = active_session(&state)?;
+    let session = guard.as_ref().expect("active_session checked");
+    let count = decrypt_folder_from_vault(
+        session,
+        std::path::Path::new(&vault_folder_path),
+        std::path::Path::new(&destination_path),
+    )
+    .map_err(|error| format!("No se pudo restaurar la carpeta: {error}"))?;
+    Ok(format!("Carpeta restaurada: {count} archivos recuperados"))
+}
+
+#[tauri::command]
 fn export_backup(
     state: State<'_, AppState>,
     backup_path: String,
@@ -222,6 +275,8 @@ fn main() {
             lock_vault,
             encrypt_file,
             decrypt_file,
+            encrypt_folder,
+            decrypt_folder,
             export_backup,
             import_backup
         ])

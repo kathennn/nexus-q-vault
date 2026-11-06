@@ -11,5 +11,6 @@ tauri-build = "2.7.4"
 
 [dependencies]
 nexusq-core = { path = "../../../nexus-q/crates/nexusq-core" }
+nexus-q-vault-spike = { path = "../.." }
 tauri = "2.12.5"
 zeroize = "1.8"

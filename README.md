@@ -18,9 +18,9 @@ NEXUS-Q Vault aims to let people without security expertise protect local files 
 - An independently audited implementation, certified cryptography, or reproducible release binaries.
 
 ## MVP scope
-The MVP is one use case: a **local encrypted file vault**. It covers vault creation, file encryption/decryption and backup restoration. Synchronization, cloud services, sharing links, teams and enterprise management are explicitly out of scope.
+The MVP is one use case: a **local encrypted file vault**. The desktop prototype covers vault creation, individual-file and folder encryption/decryption, and backup restoration. Synchronization, cloud services, sharing links, teams and enterprise management are explicitly out of scope.
 
-See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [docs/DECISIONS.md](docs/DECISIONS.md) and the [backup-based recovery proposal](docs/RECOVERY_DESIGN.md).
+See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [docs/DECISIONS.md](docs/DECISIONS.md), the [folder format v1](docs/FOLDER_FORMAT_V1.md) and the [backup-based recovery proposal](docs/RECOVERY_DESIGN.md).
 
 ## Cryptographic boundary
 `nexusq-core` is the sole cryptographic engine. Vault must not introduce parallel cryptographic implementations, custom key derivation, custom encryption formats or silent fallback paths. The integration spike uses the public `Vault`, `Session`, and `storage::backup` APIs from the sibling `nexus-q` checkout. This local path is a development convenience; a published build must pin a reviewed release or immutable revision and verify its provenance.
@@ -28,7 +28,7 @@ See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [docs/DECISION
 The engine revision pinned by CI is `efe486603af266c379131526d8320a0584254ce4`. Its file helpers publish outputs via a same-directory temporary file and atomic no-clobber hard link; on Unix the file is created with mode `0600` and the containing directory is synced. This is create-only publication, not atomic replacement. Non-Unix permission and durability semantics still require platform-specific validation. The engine's current default provider is RustCrypto. Experimental native backends are not enabled by this project. Exact algorithms and security claims must be tied to the engine version and its published documentation; "post-quantum" does not mean every operation or threat is quantum-proof.
 
 ## Repository status
-This repository contains project governance, a Rust integration spike and an early Tauri 2 desktop prototype (`apps/desktop`). The prototype currently supports vault create/open/lock, single-file `.nqx` encryption/decryption and encrypted vault-key backup export/import through `nexusq-core`. Backups do not bundle `.nqx` payload files; those must be preserved separately. It is not yet user-tested or production-ready. Native file pickers, recovery workflow, encrypted folder manifest, format migration policy, release pipeline and independent security review are not complete.
+This repository contains project governance, a Rust integration spike and an early Tauri 2 desktop prototype (`apps/desktop`). The prototype currently supports vault create/open/lock, single-file `.nqx` encryption/decryption, folder encryption using a versioned encrypted manifest with opaque object names, and encrypted vault-key backup export/import through `nexusq-core`. Backups do not bundle `.nqx` payload files or folder-vault object directories; preserve those separately. Folder encryption rejects symlinks, omits empty directories, rejects unsafe paths and case-insensitive path collisions, and limits each file to 32 MiB because the pinned engine processes complete files in memory. It is not yet user-tested or production-ready. Native file pickers, recovery usability testing, format migration policy, release pipeline and independent security review remain incomplete.
 
 ## Run the desktop prototype
 
@@ -60,7 +60,7 @@ The spike is a library integration test, not a finished user-facing application.
 
 ## Current file-operation constraints
 
-The pinned engine reads complete inputs and envelopes into memory; it does not provide streaming file encryption or bounded-memory processing. File outputs now use atomic create-only publication: a completed temporary file is linked into place without overwriting an existing destination. On Unix, file data and the parent directory are synced and new files use mode `0600`. This does not provide atomic replacement, secure deletion, or validated permission/durability semantics on every platform. Consequently, the current integration is a correctness spike for modest file sizes, not yet a safe general-purpose folder vault. Large-file support and cross-platform filesystem guarantees remain release gates. Authentication failures are tested to produce no plaintext output.
+The pinned engine reads complete inputs and envelopes into memory; it does not provide streaming file encryption or bounded-memory processing. File outputs now use atomic create-only publication: a completed temporary file is linked into place without overwriting an existing destination. On Unix, file data and the parent directory are synced and new files use mode `0600`. This does not provide atomic replacement, secure deletion, or validated permission/durability semantics on every platform. The folder adapter also uses create-only atomic publication, private directories/files on Unix, a manifest published last, and removes partial output on reported errors. It rejects symbolic links and limits individual files to 32 MiB. Empty directories are not represented. Large-file support and cross-platform filesystem guarantees remain release gates. Authentication failures are tested to produce no plaintext output.
 
 ## Prepare the local engine checkout
 

@@ -54,13 +54,13 @@ Every boundary needs explicit input validation and error handling. UI validation
 - The OS random source is healthy.
 - Users choose strong, unique vault and backup credentials.
 - The app never silently downgrades cryptography or bypasses authentication.
-- File writes use atomic replacement, restrictive permissions where supported, integrity verification and cleanup of temporary plaintext on error.
+- File writes use atomic create-only publication, restrictive permissions where supported, integrity verification and cleanup of partial output on reported errors.
 - The app preserves source files by default; secure deletion is not promised.
 
 ## Important risks
 - **Recovery compromise:** recovery materials can become a second master key. Separate backup credentials and document storage risks.
 - **Plaintext residue:** applications, swap, crash dumps and filesystem snapshots may retain plaintext.
-- **Metadata leakage:** encrypted content does not automatically hide filenames, sizes, directory structure or timestamps.
+- **Metadata leakage:** folder names and relative paths are encrypted in the manifest, but object count, ciphertext sizes, timestamps and access patterns remain observable.
 - **Supply chain:** a signed installer is only as trustworthy as its signing key, build pipeline and release process.
 - **Quantum claims:** use only algorithms and constructions explicitly documented by the pinned nexusq-core release. Do not label the whole app quantum-proof.
 

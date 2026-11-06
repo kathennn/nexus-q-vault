@@ -22,21 +22,26 @@ function submit(formId, command, fields) {
     event.preventDefault(); const button = form.querySelector('button[type="submit"]'); button.disabled = true;
     try {
       const args = Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]));
-      showMessage(await invoke(command, args)); clearSecrets(form); await refreshStatus();
+      showMessage(await invoke(command, args)); await refreshStatus();
     } catch (error) { showMessage(String(error), true); }
-    finally { button.disabled = false; await refreshStatus(); }
+    finally { clearSecrets(form); button.disabled = false; await refreshStatus(); }
   });
 }
 submit("create-form","create_vault",[["path","create-path"],["password","create-password"]]);
 submit("open-form","open_vault",[["path","open-path"],["password","open-password"]]);
 submit("encrypt-form","encrypt_file",[["inputPath","encrypt-path"]]);
 submit("decrypt-form","decrypt_file",[["inputPath","decrypt-input"],["outputPath","decrypt-output"]]);
+submit("encrypt-folder-form","encrypt_folder",[["sourcePath","encrypt-folder-source"],["vaultFolderPath","encrypt-folder-output"]]);
+submit("decrypt-folder-form","decrypt_folder",[["vaultFolderPath","decrypt-folder-source"],["destinationPath","decrypt-folder-output"]]);
 submit("backup-form","export_backup",[["backupPath","backup-path"],["backupPassphrase","backup-password"]]);
 submit("restore-form","import_backup",[["backupPath","restore-backup-path"],["backupPassphrase","restore-backup-password"],["newVaultPath","restore-vault-path"],["newVaultPassword","restore-vault-password"]]);
 lockButton.addEventListener("click", async () => {
   lockButton.disabled = true;
   try { showMessage(await invoke("lock_vault")); }
   catch (error) { showMessage(String(error), true); }
-  finally { await refreshStatus(); }
+  finally {
+    document.querySelectorAll('input[type="password"]').forEach((input) => { input.value = ""; });
+    await refreshStatus();
+  }
 });
 refreshStatus();

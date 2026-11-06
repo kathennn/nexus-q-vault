@@ -1,5 +1,6 @@
 //! NEXUS-Q Vault integration spike.
 //! All cryptography and vault file handling are delegated to nexusq-core.
+pub mod folder_manifest;
 use nexusq_core::storage::backup;
 use nexusq_core::vault::{Algorithm, Purpose, Vault, VaultError};
 use std::path::{Path, PathBuf};

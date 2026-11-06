@@ -7,8 +7,11 @@
 - [ ] Recovery design and user-tested recovery flow.
   - [x] Draft backup-based recovery proposal and automated restore with a new vault password (user testing still pending).
 - [ ] Encrypted folder manifest and format migration policy.
+  - [x] Version-1 encrypted manifest, opaque object names, safe relative paths, atomic create-only publication and folder roundtrip tests.
+  - [ ] Format migration, empty-directory preservation, large-file streaming and cross-platform filesystem review.
 - [ ] Desktop UI and accessible onboarding.
   - [x] Initial Tauri 2 desktop shell and Rust command boundary (prototype only; not yet user-tested).
+  - [x] UI commands for individual files, folder encryption/restoration and encrypted key backups.
   - [ ] Native file/folder pickers, onboarding polish and accessibility review.
 - [ ] CI, dependency review, fuzzing and reproducible-build investigation.
 - [ ] External security review and community beta.

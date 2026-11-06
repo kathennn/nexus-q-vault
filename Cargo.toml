@@ -8,6 +8,8 @@ description = "Technical spike for NEXUS-Q Vault using nexusq-core as its sole c
 
 [dependencies]
 nexusq-core = { path = "../nexus-q/crates/nexusq-core" }
+serde = { version = "1", features = ["derive"] }
+zeroize = "1.8"
 
 [dev-dependencies]
 tempfile = "3"

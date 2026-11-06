@@ -67,3 +67,6 @@ jobs:
 
       - name: Check desktop application
         run: cargo clippy --manifest-path apps/desktop/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Build desktop application
+        run: cargo build --manifest-path apps/desktop/Cargo.toml --locked
