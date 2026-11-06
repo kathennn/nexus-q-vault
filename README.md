@@ -20,7 +20,7 @@ NEXUS-Q Vault aims to let people without security expertise protect local files 
 ## MVP scope
 The MVP is one use case: a **local encrypted file vault**. The desktop prototype covers vault creation, individual-file and folder encryption/decryption, and backup restoration. Synchronization, cloud services, sharing links, teams and enterprise management are explicitly out of scope.
 
-See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [docs/DECISIONS.md](docs/DECISIONS.md), the [folder format v1](docs/FOLDER_FORMAT_V1.md) and the [backup-based recovery proposal](docs/RECOVERY_DESIGN.md).
+See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md), [docs/DECISIONS.md](docs/DECISIONS.md), the [folder format v1](docs/FOLDER_FORMAT_V1.md), the [backup-based recovery proposal](docs/RECOVERY_DESIGN.md) and the [NQX2 streaming proposal](docs/STREAMING_FORMAT_PROPOSAL.md).
 
 ## Cryptographic boundary
 `nexusq-core` is the sole cryptographic engine. Vault must not introduce parallel cryptographic implementations, custom key derivation, custom encryption formats or silent fallback paths. The integration spike uses the public `Vault`, `Session`, and `storage::backup` APIs from the sibling `nexus-q` checkout. This local path is a development convenience; a published build must pin a reviewed release or immutable revision and verify its provenance.

@@ -9,6 +9,8 @@
 - [ ] Encrypted folder manifest and format migration policy.
   - [x] Version-1 encrypted manifest, opaque object names, safe relative paths, atomic create-only publication and folder roundtrip tests.
   - [ ] Format migration, empty-directory preservation, large-file streaming and cross-platform filesystem review.
+    - [x] Drafted the NQX2 chunked-streaming proposal; no cryptographic code is implemented pending core review.
+    - [ ] Review and implement the format in nexus-q with NQX1 backward compatibility and fuzz/fault-injection tests.
 - [ ] Desktop UI and accessible onboarding.
   - [x] Initial Tauri 2 desktop shell and Rust command boundary (prototype only; not yet user-tested).
   - [x] UI commands for individual files, folder encryption/restoration and encrypted key backups.

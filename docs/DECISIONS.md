@@ -38,3 +38,13 @@ The initial folder format is documented in [FOLDER_FORMAT_V1.md](FOLDER_FORMAT_V
 Use the official Tauri 2 dialog plugin through its Rust API. The frontend invokes narrow Rust commands for selecting files, save destinations and folders; it does not use a JavaScript filesystem API or read file contents. File dialogs filter known `.nqv`, `.nqb` and `.nqx` formats where appropriate. Folder-vault creation and restore dialogs select a parent directory and propose a new child directory, whose path remains editable.
 
 The dialog calls are exposed as asynchronous Tauri commands using the plugin's blocking native-dialog methods off the UI thread. Cancel returns no selection and leaves the existing path unchanged. The selected local path is returned to the frontend for display and then passed back to the relevant Rust operation. Non-UTF-8 paths are rejected explicitly rather than converted lossily. This does not establish a sandbox or prevent access to other local files; the app remains a user-authorized local desktop application. Cross-platform cancellation, permission and accessibility behavior must be tested before beta.
+
+
+## ADR-008 — Streaming file envelope NQX2
+**Status:** proposed only; no implementation approved.
+
+NQX1 remains the existing single-payload envelope and must stay readable. The desktop app must not implement streaming cryptography. A future chunked NQX2 format belongs in nexus-q and must reuse the existing KeyRecord wrapping hierarchy and AEAD primitives; no new crypto provider, KDF or custom cipher is permitted.
+
+The current proposal uses bounded chunks, per-file random DEKs, nonce-prefix plus monotonic chunk indices, domain-separated AAD binding the exact serialized header and chunk index, and a mandatory authenticated footer to detect truncation and authenticate empty files. Decryption writes only to a private temporary file and publishes create-only after every chunk, footer and EOF check succeeds. Folder object metadata must remain bound to opaque object IDs to prevent ciphertext swapping.
+
+Chunk size and maximum file size in the proposal are provisional. Nonce discipline, per-key usage limits, footer semantics, crash consistency, parser bounds and cross-platform filesystem behavior require engine-level review, test vectors, fuzzing and fault injection before implementation. NQX1 files are never rewritten in place; migration writes a new file and preserves the original. See [STREAMING_FORMAT_PROPOSAL.md](STREAMING_FORMAT_PROPOSAL.md). This ADR does not authorize changes to the v4.1.2 release or its artifacts.
