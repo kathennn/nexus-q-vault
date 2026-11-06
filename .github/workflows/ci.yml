@@ -1,0 +1,36 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out NEXUS-Q Vault
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check out pinned nexus-q engine
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/lecodev-26/nexus-q.git ../nexus-q
+          git -C ../nexus-q checkout 8708a0ec42c948e33e058de4f5e6afc8b3538125
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --locked

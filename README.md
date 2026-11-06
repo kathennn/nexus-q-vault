@@ -1,0 +1,64 @@
+# NEXUS-Q Vault
+
+**A local-first desktop vault for files, notes and backups, built around the NEXUS-Q cryptographic engine.**
+
+> **Status: early development / technical spike. Not production-ready.** Do not rely on this project as the only copy of important data.
+
+NEXUS-Q Vault aims to let people without security expertise protect local files with a clear recovery path. Source code, vault-format decisions, threat model and release process are intended to remain public and auditable.
+
+## What it aims to protect
+- Confidentiality and integrity of files stored in an encrypted local vault.
+- Recovery of vault data from a separately encrypted backup.
+- Cryptographic operations delegated to the `nexusq-core` Rust library.
+
+## What it does not currently promise
+- Protection from malware, keyloggers, a compromised operating system or an attacker controlling the logged-in user session.
+- Secure deletion of original files, swap, filesystem snapshots or SSD blocks.
+- Cloud synchronization, sharing, collaboration or enterprise administration.
+- An independently audited implementation, certified cryptography, or reproducible release binaries.
+
+## MVP scope
+The MVP is one use case: a **local encrypted file vault**. It covers vault creation, file encryption/decryption and backup restoration. Synchronization, cloud services, sharing links, teams and enterprise management are explicitly out of scope.
+
+See [PRODUCT.md](PRODUCT.md), [THREAT_MODEL.md](THREAT_MODEL.md) and [docs/DECISIONS.md](docs/DECISIONS.md).
+
+## Cryptographic boundary
+`nexusq-core` is the sole cryptographic engine. Vault must not introduce parallel cryptographic implementations, custom key derivation, custom encryption formats or silent fallback paths. The integration spike uses the public `Vault`, `Session`, and `storage::backup` APIs from the sibling `nexus-q` checkout. This local path is a development convenience; a published build must pin a reviewed release or immutable revision and verify its provenance.
+
+The engine's current default provider is RustCrypto. Experimental native backends are not enabled by this project. Exact algorithms and security claims must be tied to the engine version and its published documentation; "post-quantum" does not mean every operation or threat is quantum-proof.
+
+## Repository status
+This repository currently contains project governance and a Rust integration spike. The desktop UI, recovery-phrase workflow, file manifest, format policy, release pipeline and independent security review are not complete.
+
+## Build the spike
+Prerequisites: Rust 1.88+ and a sibling checkout of `../nexus-q` containing the matching `nexusq-core` workspace.
+
+```sh
+cargo test
+```
+
+The spike is a library integration test, not a finished user-facing application. Do not put real passwords in shell history or command-line arguments.
+
+## Governance
+- License: MIT. See [LICENSE](LICENSE).
+- Contributions: [CONTRIBUTING.md](CONTRIBUTING.md).
+- Security reports: [SECURITY.md](SECURITY.md).
+- Community standards: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+- MVP definition: [PRODUCT.md](PRODUCT.md).
+- Threat model: [THREAT_MODEL.md](THREAT_MODEL.md).
+- Decisions: [docs/DECISIONS.md](docs/DECISIONS.md).
+
+## Prepare the local engine checkout
+
+The current spike uses a sibling path dependency, so clone the exact engine
+revision used for the integration test:
+
+```sh
+git clone https://github.com/lecodev-26/nexus-q.git ../nexus-q
+git -C ../nexus-q checkout 8708a0ec42c948e33e058de4f5e6afc8b3538125
+cargo test --locked
+```
+
+The CI workflow performs the same pinned checkout. Updating the engine revision
+is a security-sensitive dependency change: review the engine release notes,
+cryptography documentation, dependency diff and compatibility tests first.

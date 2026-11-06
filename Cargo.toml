@@ -1,0 +1,13 @@
+[package]
+name = "nexus-q-vault-spike"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+description = "Technical spike for NEXUS-Q Vault using nexusq-core as its sole cryptographic engine"
+
+[dependencies]
+nexusq-core = { path = "../nexus-q/crates/nexusq-core" }
+
+[dev-dependencies]
+tempfile = "3"
