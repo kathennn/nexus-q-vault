@@ -39,25 +39,24 @@ fn recovery_works_across_independent_processes() {
     fs::create_dir_all(&profile_b).unwrap();
 
     run_child("create", root, &profile_a);
-    let original_vault = fs::read(root.join("installation-a/vault.nqv")).unwrap();
-    let original_binary = fs::read(root.join("installation-a/source-files/binary.dat")).unwrap();
-    let original_folder_file =
-        fs::read(root.join("installation-a/source-folder/Nested/Δοκιμή/画像.txt")).unwrap();
+    // Snapshot every path and file byte in installation A, including the vault,
+    // exported .nqb, separately preserved .nqx files and encrypted folder vault.
+    let source_snapshot = snapshot_tree(&root.join("installation-a")).unwrap();
+    let recovery_artifacts_snapshot = snapshot_tree(&root.join("recovery-package")).unwrap();
 
     run_child("restore", root, &profile_b);
 
-    // The recovery process must not alter or replace the source installation.
+    // Recovery in installation B must leave the source and separately preserved
+    // recovery artifacts (the .nqb, .nqx files and encrypted folder vault) intact.
     assert_eq!(
-        fs::read(root.join("installation-a/vault.nqv")).unwrap(),
-        original_vault
+        snapshot_tree(&root.join("installation-a")).unwrap(),
+        source_snapshot,
+        "independent recovery changed the source installation"
     );
     assert_eq!(
-        fs::read(root.join("installation-a/source-files/binary.dat")).unwrap(),
-        original_binary
-    );
-    assert_eq!(
-        fs::read(root.join("installation-a/source-folder/Nested/Δοκιμή/画像.txt")).unwrap(),
-        original_folder_file
+        snapshot_tree(&root.join("recovery-package")).unwrap(),
+        recovery_artifacts_snapshot,
+        "independent recovery changed the preserved recovery artifacts"
     );
     assert!(root.join("installation-b/recovered.nqv").is_file());
 }
@@ -284,6 +283,25 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
     );
     assert_eq!(fs::read(&existing_destination)?, existing_contents);
 
+    // A fresh vault with no imported key material must not decrypt a source
+    // payload or leave a partial plaintext file behind.
+    let vault_without_keys_path = installation.join("vault-without-source-keys.nqv");
+    let vault_without_keys = Vault::create(
+        &vault_without_keys_path,
+        b"test-only-empty-vault-password",
+        Some("vault intentionally missing recovery keys".into()),
+    )?;
+    let empty_key_session = vault_without_keys.unlock(b"test-only-empty-vault-password")?;
+    let missing_key_output = installation.join("missing-key-plaintext.bin");
+    assert!(empty_key_session
+        .decrypt_file(&packaged_files.join("binary.dat.nqx"), &missing_key_output)
+        .is_err());
+    assert!(
+        !missing_key_output.exists(),
+        "missing key material must not publish plaintext"
+    );
+    empty_key_session.lock()?;
+
     let restored_vault = backup::import(
         &backup_path,
         BACKUP_PASSPHRASE,
@@ -397,6 +415,35 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
 
     restored_session.lock()?;
     Ok(())
+}
+
+fn snapshot_tree(root: &Path) -> std::io::Result<Vec<(PathBuf, bool, Vec<u8>)>> {
+    fn visit(
+        root: &Path,
+        directory: &Path,
+        entries: &mut Vec<(PathBuf, bool, Vec<u8>)>,
+    ) -> std::io::Result<()> {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            let relative = path
+                .strip_prefix(root)
+                .expect("walked path remains under snapshot root")
+                .to_path_buf();
+            if entry.file_type()?.is_dir() {
+                entries.push((relative, true, Vec::new()));
+                visit(root, &path, entries)?;
+            } else {
+                entries.push((relative, false, fs::read(path)?));
+            }
+        }
+        Ok(())
+    }
+
+    let mut entries = Vec::new();
+    visit(root, root, &mut entries)?;
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+    Ok(entries)
 }
 
 fn copy_directory(source: &Path, destination: &Path) -> std::io::Result<()> {
