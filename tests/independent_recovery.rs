@@ -293,9 +293,11 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
     )?;
     let empty_key_session = vault_without_keys.unlock(b"test-only-empty-vault-password")?;
     let missing_key_output = installation.join("missing-key-plaintext.bin");
-    assert!(empty_key_session
-        .decrypt_file(&packaged_files.join("binary.dat.nqx"), &missing_key_output)
-        .is_err());
+    assert!(
+        empty_key_session
+            .decrypt_file(&packaged_files.join("binary.dat.nqx"), &missing_key_output)
+            .is_err()
+    );
     assert!(
         !missing_key_output.exists(),
         "missing key material must not publish plaintext"
