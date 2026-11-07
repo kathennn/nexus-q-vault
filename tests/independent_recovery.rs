@@ -283,6 +283,8 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
     );
     assert_eq!(fs::read(&existing_destination)?, existing_contents);
 
+    let packaged_files = package.join("payloads/files");
+
     // A fresh vault with no imported key material must not decrypt a source
     // payload or leave a partial plaintext file behind.
     let vault_without_keys_path = installation.join("vault-without-source-keys.nqv");
@@ -316,7 +318,6 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
     ));
     let restored_session = restored_vault.unlock(RECOVERED_PASSWORD)?;
 
-    let packaged_files = package.join("payloads/files");
     let restored_files = installation.join("restored-files");
     fs::create_dir_all(&restored_files)?;
     for (name, expected) in [
