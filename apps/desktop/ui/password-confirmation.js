@@ -1,12 +1,17 @@
 (function (root) {
   "use strict";
-  function runConfirmedCommand(confirmations, command) {
-    const mismatchIndex = confirmations.findIndex(
-      ({ value, confirmation }) => value !== confirmation,
-    );
-    if (mismatchIndex !== -1) return { matched: false, mismatchIndex };
-    return { matched: true, result: command() };
+  function createConfirmedFormSubmit({ readConfirmations, onMismatch, onMatch }) {
+    return function handleSubmit(event) {
+      event.preventDefault();
+      const confirmations = readConfirmations();
+      const mismatchIndex = confirmations.findIndex(({ value, confirmation }) => value !== confirmation);
+      if (mismatchIndex !== -1) {
+        onMismatch(confirmations[mismatchIndex], mismatchIndex);
+        return { matched: false, mismatchIndex };
+      }
+      return { matched: true, result: onMatch() };
+    };
   }
-  root.passwordConfirmation = { runConfirmedCommand };
+  root.passwordConfirmation = { createConfirmedFormSubmit };
   if (typeof module !== "undefined" && module.exports) module.exports = root.passwordConfirmation;
 })(globalThis);

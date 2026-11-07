@@ -59,28 +59,28 @@ function submit(formId, command, fields) {
       input.addEventListener("input", () => confirmation.setCustomValidity(""));
     });
   });
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const confirmations = [...form.querySelectorAll("[data-confirm-for]")];
-    confirmations.forEach((confirmation) => confirmation.setCustomValidity(""));
-    const validation = passwordConfirmation.runConfirmedCommand(
-      confirmations.map((confirmation) => ({
-        value: $(confirmation.dataset.confirmFor).value,
-        confirmation: confirmation.value,
-      })),
-      () => undefined,
-    );
-    if (!validation.matched) {
-      const confirmation = confirmations[validation.mismatchIndex];
+  const handleConfirmedSubmit = passwordConfirmation.createConfirmedFormSubmit({
+    readConfirmations: () => [...form.querySelectorAll("[data-confirm-for]")].map((confirmation) => ({
+      input: confirmation,
+      value: $(confirmation.dataset.confirmFor).value,
+      confirmation: confirmation.value,
+    })),
+    onMismatch: ({ input }) => {
       const message = preference("language", "en") === "es"
         ? "Las contraseñas no coinciden. Comprueba ambos campos."
         : "Passwords do not match. Check both fields.";
-      confirmation.setCustomValidity(message);
-      confirmation.reportValidity();
-      confirmation.focus();
+      input.setCustomValidity(message);
+      input.reportValidity();
+      input.focus();
       showMessage(message, true);
-      return;
-    }
+    },
+    onMatch: () => invoke(command, Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]))),
+  });
+  form.addEventListener("submit", async (event) => {
+    const validation = handleConfirmedSubmit(event);
+    if (!validation.matched) return;
+    const confirmations = [...form.querySelectorAll("[data-confirm-for]")];
+    confirmations.forEach((confirmation) => confirmation.setCustomValidity(""));
     const button = form.querySelector('button[type="submit"]');
     const originalLabel = button.textContent;
     button.disabled = true;
@@ -88,15 +88,7 @@ function submit(formId, command, fields) {
     form.setAttribute("aria-busy", "true");
     showMessage("Operación en curso. Espera a que termine.");
     try {
-      const args = Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]));
-      const result = passwordConfirmation.runConfirmedCommand(
-        confirmations.map((confirmation) => ({
-          value: $(confirmation.dataset.confirmFor).value,
-          confirmation: confirmation.value,
-        })),
-        () => invoke(command, args),
-      );
-      showMessage(await result.result);
+      showMessage(await validation.result);
     } catch (error) {
       showMessage(String(error), true);
     } finally {
@@ -184,6 +176,7 @@ lockButton.addEventListener("click", async () => {
       const toggle = row.querySelector("button");
       input.value = "";
       input.type = "password";
+      input.setCustomValidity("");
       toggle.textContent = preference("language", "en") === "es" ? "Mostrar" : "Show";
       toggle.setAttribute("aria-pressed", "false");
       toggle.setAttribute("aria-label", preference("language", "en") === "es" ? "Mostrar contraseña" : "Show password");
