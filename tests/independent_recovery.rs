@@ -83,9 +83,9 @@ fn run_child(stage: &str, root: &Path, profile: &Path) {
         // Keep each child process on a distinct, empty user/application profile.
         .env("HOME", profile)
         .env("USERPROFILE", profile)
-        .env("APPDATA", config)
+        .env("APPDATA", &config)
         .env("LOCALAPPDATA", local_data)
-        .env("XDG_CONFIG_HOME", config)
+        .env("XDG_CONFIG_HOME", &config)
         .env("XDG_DATA_HOME", data)
         .env("XDG_CACHE_HOME", cache)
         .env("XDG_RUNTIME_DIR", runtime)
