@@ -62,19 +62,24 @@ function submit(formId, command, fields) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const confirmations = [...form.querySelectorAll("[data-confirm-for]")];
-    for (const confirmation of confirmations) {
-      confirmation.setCustomValidity("");
-      const password = $(confirmation.dataset.confirmFor);
-      if (password.value !== confirmation.value) {
-        const message = preference("language", "en") === "es"
-          ? "Las contraseñas no coinciden. Comprueba ambos campos."
-          : "Passwords do not match. Check both fields.";
-        confirmation.setCustomValidity(message);
-        confirmation.reportValidity();
-        confirmation.focus();
-        showMessage(message, true);
-        return;
-      }
+    confirmations.forEach((confirmation) => confirmation.setCustomValidity(""));
+    const validation = passwordConfirmation.runConfirmedCommand(
+      confirmations.map((confirmation) => ({
+        value: $(confirmation.dataset.confirmFor).value,
+        confirmation: confirmation.value,
+      })),
+      () => undefined,
+    );
+    if (!validation.matched) {
+      const confirmation = confirmations[validation.mismatchIndex];
+      const message = preference("language", "en") === "es"
+        ? "Las contraseñas no coinciden. Comprueba ambos campos."
+        : "Passwords do not match. Check both fields.";
+      confirmation.setCustomValidity(message);
+      confirmation.reportValidity();
+      confirmation.focus();
+      showMessage(message, true);
+      return;
     }
     const button = form.querySelector('button[type="submit"]');
     const originalLabel = button.textContent;
@@ -84,7 +89,14 @@ function submit(formId, command, fields) {
     showMessage("Operación en curso. Espera a que termine.");
     try {
       const args = Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]));
-      showMessage(await invoke(command, args));
+      const result = passwordConfirmation.runConfirmedCommand(
+        confirmations.map((confirmation) => ({
+          value: $(confirmation.dataset.confirmFor).value,
+          confirmation: confirmation.value,
+        })),
+        () => invoke(command, args),
+      );
+      showMessage(await result.result);
     } catch (error) {
       showMessage(String(error), true);
     } finally {

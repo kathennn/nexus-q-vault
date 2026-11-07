@@ -19,6 +19,11 @@ jobs:
       - name: Check out NEXUS-Q Vault
         uses: actions/checkout@v5
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -28,6 +33,9 @@ jobs:
         run: |
           git clone --filter=blob:none --no-checkout https://github.com/lecodev-26/nexus-q.git ../nexus-q
           git -C ../nexus-q checkout efe486603af266c379131526d8320a0584254ce4
+
+      - name: Check frontend password confirmation flows
+        run: node --test apps/desktop/ui/password-confirmation.test.js
 
       - name: Check formatting
         run: cargo fmt --all -- --check
