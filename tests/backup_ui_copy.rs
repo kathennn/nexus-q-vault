@@ -41,7 +41,7 @@ fn backup_warning_copy_has_english_and_spanish_translations() {
         "Individual .nqx files, manifest.nqm files or encrypted folder objects.",
         "Before restoring: you need both backups",
         "The import creates a new vault protected by the new password you choose here.",
-        "The .nqb does not contain encrypted documents and cannot reveal, recover or reset the original vault password.",
+        "The .nqb does not contain encrypted documents and cannot reveal, recover or reset the original vault password. Without the .nqb, its passphrase and the separately preserved encrypted payloads, recovery may be impossible.",
         "Make a vault-key backup",
         "Restore keys and documents",
     ] {
