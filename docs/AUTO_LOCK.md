@@ -2,9 +2,11 @@
 
 The desktop application enforces an inactivity timeout in the Rust process. The
 default is five minutes; users can select one, five, ten, fifteen or thirty
-minutes in Settings. The selected value is stored in the local application
-preferences and validated again by the Rust command before it is applied.
-No activity data is transmitted or persisted.
+minutes in Settings, or choose **Never** to disable inactivity locking. The
+zero-second disabled value is stored in the local application preferences and
+validated again by the Rust command before it is applied. Exit locking remains
+active even when inactivity locking is disabled. No activity data is
+transmitted or persisted.
 
 Keyboard, pointer, touch and wheel activity is reported to Rust with a
 throttled IPC call. Rust owns the deadline and checks it independently of the
@@ -18,7 +20,11 @@ event-loop resume, the app attempts to lock any still-open session before
 refreshing the inactivity baseline. The frontend clears password fields and
 updates the locked status when it receives the lock event. Lock errors are
 surfaced to the interface; an exit request is prevented if saving the session
-fails.
+fails. The current `nexus-q` `Session::lock(self)` API consumes the session
+before returning, including on error. Consequently, the desktop application
+cannot retain the in-memory session for retry if persistence fails. Fixing that
+guarantee requires a non-consuming lock API in the engine; this desktop change
+does not modify the separate `nexus-q` repository.
 
 ## Platform limitation
 

@@ -196,7 +196,7 @@ async function initializeIdleTimeout() {
   if (!idleTimeoutSelect) return;
   try {
     const stored = Number(preference("idleTimeout", "300"));
-    const allowed = [60, 300, 600, 900, 1800];
+    const allowed = [0, 60, 300, 600, 900, 1800];
     const seconds = allowed.includes(stored) ? stored : 300;
     await invoke("set_idle_timeout", { seconds });
     idleTimeoutSelect.value = String(seconds);
@@ -249,6 +249,7 @@ Object.assign(translations, {
   "Automatic vault lock": "Bloqueo automático del vault",
   "Lock after inactivity": "Bloquear tras inactividad",
   "Lock the vault after a period without keyboard or pointer activity. This setting stays on this device.": "Bloquea el vault tras un periodo sin actividad de teclado o ratón. Este ajuste permanece en este dispositivo.",
+  "Never": "Nunca",
   "1 minute": "1 minuto",
   "5 minutes": "5 minutos",
   "10 minutes": "10 minutos",

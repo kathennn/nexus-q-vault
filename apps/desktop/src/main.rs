@@ -36,7 +36,7 @@ impl Default for AppState {
     }
 }
 fn idle_timeout_from_seconds(seconds: u64) -> Result<Duration, String> {
-    if ![60, 300, 600, 900, 1800].contains(&seconds) {
+    if seconds != 0 && ![60, 300, 600, 900, 1800].contains(&seconds) {
         return Err("El tiempo de inactividad seleccionado no es válido".into());
     }
     Ok(Duration::from_secs(seconds))
@@ -553,20 +553,39 @@ fn main() {
 
 #[cfg(test)]
 mod idle_lock_tests {
-    use super::{idle_timeout_from_seconds, inactivity_elapsed};
+    use super::{idle_timeout_from_seconds, inactivity_elapsed, touch_activity, AppState};
     use std::time::{Duration, Instant};
 
     #[test]
     fn accepts_only_supported_idle_timeouts() {
-        for seconds in [60, 300, 600, 900, 1800] {
+        for seconds in [0, 60, 300, 600, 900, 1800] {
             assert_eq!(
                 idle_timeout_from_seconds(seconds),
                 Ok(Duration::from_secs(seconds))
             );
         }
-        for seconds in [0, 30, 120, 3600] {
+        for seconds in [30, 120, 3600] {
             assert!(idle_timeout_from_seconds(seconds).is_err());
         }
+    }
+
+    #[test]
+    fn recent_activity_resets_the_inactivity_deadline() {
+        let state = AppState::default();
+        let timeout = Duration::from_secs(300);
+        *state.last_activity.lock().unwrap() = Instant::now() - timeout;
+        assert!(inactivity_elapsed(
+            *state.last_activity.lock().unwrap(),
+            Instant::now(),
+            timeout
+        ));
+
+        touch_activity(&state).unwrap();
+        assert!(!inactivity_elapsed(
+            *state.last_activity.lock().unwrap(),
+            Instant::now(),
+            timeout
+        ));
     }
 
     #[test]
