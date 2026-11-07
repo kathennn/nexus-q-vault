@@ -53,8 +53,34 @@ async function refreshStatus() {
 
 function submit(formId, command, fields) {
   const form = $(formId);
+  form.querySelectorAll("[data-confirm-for]").forEach((confirmation) => {
+    const password = $(confirmation.dataset.confirmFor);
+    [password, confirmation].forEach((input) => {
+      input.addEventListener("input", () => confirmation.setCustomValidity(""));
+    });
+  });
+  const handleConfirmedSubmit = passwordConfirmation.createConfirmedFormSubmit({
+    readConfirmations: () => [...form.querySelectorAll("[data-confirm-for]")].map((confirmation) => ({
+      input: confirmation,
+      value: $(confirmation.dataset.confirmFor).value,
+      confirmation: confirmation.value,
+    })),
+    onMismatch: ({ input }) => {
+      const message = preference("language", "en") === "es"
+        ? "Las contraseñas no coinciden. Comprueba ambos campos."
+        : "Passwords do not match. Check both fields.";
+      input.setCustomValidity(message);
+      input.reportValidity();
+      input.focus();
+      showMessage(message, true);
+    },
+    onMatch: () => invoke(command, Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]))),
+  });
   form.addEventListener("submit", async (event) => {
-    event.preventDefault();
+    const validation = handleConfirmedSubmit(event);
+    if (!validation.matched) return;
+    const confirmations = [...form.querySelectorAll("[data-confirm-for]")];
+    confirmations.forEach((confirmation) => confirmation.setCustomValidity(""));
     const button = form.querySelector('button[type="submit"]');
     const originalLabel = button.textContent;
     button.disabled = true;
@@ -62,8 +88,7 @@ function submit(formId, command, fields) {
     form.setAttribute("aria-busy", "true");
     showMessage("Operación en curso. Espera a que termine.");
     try {
-      const args = Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]));
-      showMessage(await invoke(command, args));
+      showMessage(await validation.result);
     } catch (error) {
       showMessage(String(error), true);
     } finally {
@@ -104,20 +129,23 @@ function bindPicker(buttonId, inputId, command, kind, transform = (path) => path
   });
 }
 
-submit("create-form", "create_vault", [["path", "create-path"], ["password", "create-password"]]);
+submit("create-form", "create_vault", [["path", "create-path"], ["password", "create-password"], ["passwordConfirmation", "create-password-confirm"]]);
 submit("open-form", "open_vault", [["path", "open-path"], ["password", "open-password"]]);
 submit("encrypt-form", "encrypt_file", [["inputPath", "encrypt-path"]]);
 submit("decrypt-form", "decrypt_file", [["inputPath", "decrypt-input"], ["outputPath", "decrypt-output"]]);
 submit("encrypt-folder-form", "encrypt_folder", [["sourcePath", "encrypt-folder-source"], ["vaultFolderPath", "encrypt-folder-output"]]);
 submit("decrypt-folder-form", "decrypt_folder", [["vaultFolderPath", "decrypt-folder-source"], ["destinationPath", "decrypt-folder-output"]]);
-submit("backup-form", "export_backup", [["backupPath", "backup-path"], ["backupPassphrase", "backup-password"]]);
-submit("restore-form", "import_backup", [["backupPath", "restore-backup-path"], ["backupPassphrase", "restore-backup-password"], ["newVaultPath", "restore-vault-path"], ["newVaultPassword", "restore-vault-password"]]);
+submit("backup-form", "export_backup", [["backupPath", "backup-path"], ["backupPassphrase", "backup-password"], ["backupPassphraseConfirmation", "backup-password-confirm"]]);
+submit("restore-form", "import_backup", [["backupPath", "restore-backup-path"], ["backupPassphrase", "restore-backup-password"], ["newVaultPath", "restore-vault-path"], ["newVaultPassword", "restore-vault-password"], ["newVaultPasswordConfirmation", "restore-vault-password-confirm"]]);
 
 bindSecretToggle("create-password-toggle", "create-password");
+bindSecretToggle("create-password-confirm-toggle", "create-password-confirm");
 bindSecretToggle("open-password-toggle", "open-password");
 bindSecretToggle("backup-password-toggle", "backup-password");
+bindSecretToggle("backup-password-confirm-toggle", "backup-password-confirm");
 bindSecretToggle("restore-backup-password-toggle", "restore-backup-password");
 bindSecretToggle("restore-vault-password-toggle", "restore-vault-password");
+bindSecretToggle("restore-vault-password-confirm-toggle", "restore-vault-password-confirm");
 
 bindPicker("create-path-picker", "create-path", "pick_save_path", "vault");
 bindPicker("open-path-picker", "open-path", "pick_file_path", "vault");
@@ -148,6 +176,7 @@ lockButton.addEventListener("click", async () => {
       const toggle = row.querySelector("button");
       input.value = "";
       input.type = "password";
+      input.setCustomValidity("");
       toggle.textContent = preference("language", "en") === "es" ? "Mostrar" : "Show";
       toggle.setAttribute("aria-pressed", "false");
       toggle.setAttribute("aria-label", preference("language", "en") === "es" ? "Mostrar contraseña" : "Show password");
