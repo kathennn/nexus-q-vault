@@ -29,6 +29,9 @@ fn export_and_restore_forms_show_accessible_backup_warnings() {
     assert!(restore_form.contains("contraseña independiente"));
     assert!(restore_form.contains("vault nuevo"));
     assert!(restore_form.contains("contraseña original"));
+    assert!(restore_form.contains("backup de claves del vault (.nqb)"));
+    assert!(restore_form.contains("archivos .nqx y datos de carpetas cifradas"));
+    assert!(restore_form.contains("claves restauradas para descifrar"));
 }
 
 #[test]
@@ -39,11 +42,15 @@ fn backup_warning_copy_has_english_and_spanish_translations() {
         "What this backup contains",
         "Encrypted vault state and the key material needed to recover it.",
         "Individual .nqx files, manifest.nqm files or encrypted folder objects.",
-        "Before restoring: you need both backups",
+        "Before restoring: you need these two recovery components",
+        "Required: the .nqb vault-key backup and its separate passphrase.",
+        "Also required: separately preserved encrypted payloads (.nqx files and encrypted folder data).",
+        "The restored keys are used to decrypt the separately preserved .nqx files and restore the encrypted folder data.",
         "The import creates a new vault protected by the new password you choose here.",
         "The .nqb does not contain encrypted documents and cannot reveal, recover or reset the original vault password. Without the .nqb, its passphrase and the separately preserved encrypted payloads, recovery may be impossible.",
         "Make a vault-key backup",
         "Restore keys and documents",
+        "Import the .nqb with its separate backup passphrase and create a new vault with a new vault password. The restored keys are then used to decrypt your separately preserved .nqx files and restore your encrypted folder data. This does not reveal or reset the original vault password.",
     ] {
         assert!(
             UI_JS.contains(&format!("\"{english_copy}\":")),
@@ -54,7 +61,9 @@ fn backup_warning_copy_has_english_and_spanish_translations() {
     for spanish_copy in [
         "Crear backup de claves del vault",
         "Qué guarda este backup",
-        "Antes de restaurar: necesitas ambos backups",
+        "Antes de restaurar: necesitas estos dos componentes de recuperación",
+        "Necesitas el backup de claves del vault (.nqb) y su contraseña independiente.",
+        "También necesitas los documentos cifrados conservados por separado (archivos .nqx y datos de carpetas cifradas).",
         "La contraseña del backup es independiente",
         "no revela, recupera ni restablece la contraseña original",
         "Restaura las claves y los documentos",
