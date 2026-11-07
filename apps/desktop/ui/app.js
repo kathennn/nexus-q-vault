@@ -53,8 +53,29 @@ async function refreshStatus() {
 
 function submit(formId, command, fields) {
   const form = $(formId);
+  form.querySelectorAll("[data-confirm-for]").forEach((confirmation) => {
+    const password = $(confirmation.dataset.confirmFor);
+    [password, confirmation].forEach((input) => {
+      input.addEventListener("input", () => confirmation.setCustomValidity(""));
+    });
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const confirmations = [...form.querySelectorAll("[data-confirm-for]")];
+    for (const confirmation of confirmations) {
+      confirmation.setCustomValidity("");
+      const password = $(confirmation.dataset.confirmFor);
+      if (password.value !== confirmation.value) {
+        const message = preference("language", "en") === "es"
+          ? "Las contraseñas no coinciden. Comprueba ambos campos."
+          : "Passwords do not match. Check both fields.";
+        confirmation.setCustomValidity(message);
+        confirmation.reportValidity();
+        confirmation.focus();
+        showMessage(message, true);
+        return;
+      }
+    }
     const button = form.querySelector('button[type="submit"]');
     const originalLabel = button.textContent;
     button.disabled = true;
@@ -104,20 +125,23 @@ function bindPicker(buttonId, inputId, command, kind, transform = (path) => path
   });
 }
 
-submit("create-form", "create_vault", [["path", "create-path"], ["password", "create-password"]]);
+submit("create-form", "create_vault", [["path", "create-path"], ["password", "create-password"], ["passwordConfirmation", "create-password-confirm"]]);
 submit("open-form", "open_vault", [["path", "open-path"], ["password", "open-password"]]);
 submit("encrypt-form", "encrypt_file", [["inputPath", "encrypt-path"]]);
 submit("decrypt-form", "decrypt_file", [["inputPath", "decrypt-input"], ["outputPath", "decrypt-output"]]);
 submit("encrypt-folder-form", "encrypt_folder", [["sourcePath", "encrypt-folder-source"], ["vaultFolderPath", "encrypt-folder-output"]]);
 submit("decrypt-folder-form", "decrypt_folder", [["vaultFolderPath", "decrypt-folder-source"], ["destinationPath", "decrypt-folder-output"]]);
-submit("backup-form", "export_backup", [["backupPath", "backup-path"], ["backupPassphrase", "backup-password"]]);
-submit("restore-form", "import_backup", [["backupPath", "restore-backup-path"], ["backupPassphrase", "restore-backup-password"], ["newVaultPath", "restore-vault-path"], ["newVaultPassword", "restore-vault-password"]]);
+submit("backup-form", "export_backup", [["backupPath", "backup-path"], ["backupPassphrase", "backup-password"], ["backupPassphraseConfirmation", "backup-password-confirm"]]);
+submit("restore-form", "import_backup", [["backupPath", "restore-backup-path"], ["backupPassphrase", "restore-backup-password"], ["newVaultPath", "restore-vault-path"], ["newVaultPassword", "restore-vault-password"], ["newVaultPasswordConfirmation", "restore-vault-password-confirm"]]);
 
 bindSecretToggle("create-password-toggle", "create-password");
+bindSecretToggle("create-password-confirm-toggle", "create-password-confirm");
 bindSecretToggle("open-password-toggle", "open-password");
 bindSecretToggle("backup-password-toggle", "backup-password");
+bindSecretToggle("backup-password-confirm-toggle", "backup-password-confirm");
 bindSecretToggle("restore-backup-password-toggle", "restore-backup-password");
 bindSecretToggle("restore-vault-password-toggle", "restore-vault-password");
+bindSecretToggle("restore-vault-password-confirm-toggle", "restore-vault-password-confirm");
 
 bindPicker("create-path-picker", "create-path", "pick_save_path", "vault");
 bindPicker("open-path-picker", "open-path", "pick_file_path", "vault");

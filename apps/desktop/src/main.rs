@@ -21,6 +21,22 @@ fn secret_bytes(value: String) -> Zeroizing<Vec<u8>> {
     Zeroizing::new(value.into_bytes())
 }
 
+fn confirmed_secret(
+    value: String,
+    confirmation: String,
+    field_name: &str,
+) -> Result<Zeroizing<Vec<u8>>, String> {
+    let value = secret_bytes(value);
+    let confirmation = secret_bytes(confirmation);
+    if value.is_empty() {
+        return Err(format!("{field_name} no puede estar vacía"));
+    }
+    if value.as_slice() != confirmation.as_slice() {
+        return Err(format!("{field_name} no coincide con su confirmación"));
+    }
+    Ok(value)
+}
+
 fn active_session<'a>(
     state: &'a State<'_, AppState>,
 ) -> Result<std::sync::MutexGuard<'a, Option<Session>>, String> {
@@ -56,6 +72,7 @@ fn create_vault(
     state: State<'_, AppState>,
     path: String,
     password: String,
+    password_confirmation: String,
 ) -> Result<String, String> {
     if path.trim().is_empty() {
         return Err("Indica dónde guardar el vault".into());
@@ -71,7 +88,7 @@ fn create_vault(
         return Err("Bloquea el vault actual antes de crear otro".into());
     }
 
-    let password = secret_bytes(password);
+    let password = confirmed_secret(password, password_confirmation, "La contraseña")?;
     let vault = Vault::create(&path, password.as_slice(), Some("NEXUS-Q Vault".into()))
         .map_err(|e| format!("No se pudo crear el vault: {e}"))?;
     let mut session = vault
@@ -211,6 +228,7 @@ fn export_backup(
     state: State<'_, AppState>,
     backup_path: String,
     backup_passphrase: String,
+    backup_passphrase_confirmation: String,
 ) -> Result<String, String> {
     if backup_path.trim().is_empty() {
         return Err("Indica dónde guardar el backup".into());
@@ -220,7 +238,11 @@ fn export_backup(
     }
     let guard = active_session(&state)?;
     let session = guard.as_ref().expect("active_session checked");
-    let passphrase = secret_bytes(backup_passphrase);
+    let passphrase = confirmed_secret(
+        backup_passphrase,
+        backup_passphrase_confirmation,
+        "La contraseña del backup",
+    )?;
     backup::export(session, &backup_path, passphrase.as_slice())
         .map_err(|e| format!("No se pudo crear el backup: {e}"))?;
     Ok("Backup cifrado creado".into())
@@ -233,6 +255,7 @@ fn import_backup(
     backup_passphrase: String,
     new_vault_path: String,
     new_vault_password: String,
+    new_vault_password_confirmation: String,
 ) -> Result<String, String> {
     if backup_path.trim().is_empty() || new_vault_path.trim().is_empty() {
         return Err("Indica la ruta del backup y la del nuevo vault".into());
@@ -251,7 +274,11 @@ fn import_backup(
         return Err("Bloquea el vault actual antes de importar un backup".into());
     }
     let passphrase = secret_bytes(backup_passphrase);
-    let password = secret_bytes(new_vault_password);
+    let password = confirmed_secret(
+        new_vault_password,
+        new_vault_password_confirmation,
+        "La nueva contraseña del vault",
+    )?;
     let vault = backup::import(
         &backup_path,
         passphrase.as_slice(),
@@ -393,4 +420,39 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running NEXUS-Q Vault");
+}
+
+#[cfg(test)]
+mod password_confirmation_tests {
+    use super::confirmed_secret;
+
+    #[test]
+    fn accepts_matching_passwords_without_normalizing_whitespace() {
+        let password = confirmed_secret(
+            "  exact password  ".into(),
+            "  exact password  ".into(),
+            "password",
+        )
+        .expect("matching values should be accepted");
+        assert_eq!(password.as_slice(), b"  exact password  ");
+    }
+
+    #[test]
+    fn rejects_mismatched_passwords() {
+        assert!(
+            confirmed_secret(
+                "first password".into(),
+                "second password".into(),
+                "password"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_empty_passwords_and_whitespace_mismatches() {
+        assert!(confirmed_secret(String::new(), String::new(), "password").is_err());
+        assert!(confirmed_secret(String::new(), "non-empty".into(), "password").is_err());
+        assert!(confirmed_secret("password".into(), " password".into(), "password").is_err());
+    }
 }
