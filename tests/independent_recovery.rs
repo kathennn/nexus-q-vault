@@ -333,7 +333,7 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
     assert!(
         restored_session
             .decrypt_file(
-                &installation.join("missing-payload.nqx"),
+                installation.join("missing-payload.nqx"),
                 &missing_file_output,
             )
             .is_err()
