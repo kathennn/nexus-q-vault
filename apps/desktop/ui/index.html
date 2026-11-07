@@ -151,7 +151,15 @@
         </form>
 
         <form id="backup-form" class="operation">
-          <h4>Crear backup</h4><p>Protege el contenedor y sus claves; no incluye los archivos .nqx ni las carpetas protegidas.</p>
+          <h4>Crear backup de claves del vault</h4><p>El archivo .nqb protege el estado del vault y sus claves; no es una copia de tus documentos.</p>
+          <aside id="backup-export-warning" class="backup-notice" role="note" aria-labelledby="backup-export-warning-title">
+            <h5 id="backup-export-warning-title">Qué guarda este backup</h5>
+            <ul>
+              <li><strong>Incluye:</strong> El estado cifrado del vault y el material de claves necesario para recuperarlo.</li>
+              <li><strong>No incluye:</strong> Archivos .nqx, manifiestos manifest.nqm ni objetos de carpetas cifradas.</li>
+            </ul>
+            <p>Conserva por separado el .nqb y copias de todos tus archivos .nqx y carpetas cifradas. La contraseña del backup es independiente de la contraseña del vault; guárdala aparte del archivo.</p>
+          </aside>
           <label for="backup-path">Ruta del backup</label>
           <div class="path-row">
             <input id="backup-path" required placeholder="/ruta/backup.nqb">
@@ -165,7 +173,19 @@
         </form>
 
         <form id="restore-form" class="operation">
-          <h4>Restaurar backup</h4><p>Restaura las claves en un vault nuevo. Los archivos cifrados se conservan aparte.</p>
+          <h4>Restaurar backup de claves</h4><p>Importa el estado del vault desde un .nqb y crea un vault nuevo.</p>
+          <aside id="backup-restore-warning" class="backup-notice" role="note" aria-labelledby="backup-restore-warning-title">
+            <h5 id="backup-restore-warning-title">Antes de restaurar: necesitas estos dos componentes de recuperación</h5>
+            <ul>
+              <li>El backup de claves del vault (.nqb) y su contraseña independiente.</li>
+              <li>Los documentos cifrados conservados por separado: archivos .nqx y datos de carpetas cifradas.</li>
+            </ul>
+            <ol>
+              <li>Importa el .nqb con su contraseña independiente y crea un vault nuevo con una contraseña nueva.</li>
+              <li>Una vez creado el vault, utiliza las claves restauradas para descifrar los archivos .nqx y restaurar los datos de las carpetas cifradas conservadas por separado.</li>
+            </ol>
+            <p>El .nqb no contiene documentos cifrados y no revela, recupera ni restablece la contraseña original del vault. Sin el backup .nqb, su contraseña independiente y los documentos cifrados conservados por separado, la recuperación puede ser imposible.</p>
+          </aside>
           <label for="restore-backup-path">Backup .nqb</label>
           <div class="path-row">
             <input id="restore-backup-path" required placeholder="/ruta/backup.nqb">
@@ -202,8 +222,8 @@
         <article class="guide-card"><span>01</span><h4>Create your vault</h4><p>Choose a location, create a strong unique password and keep it safe. The vault file stores your protected key material.</p></article>
         <article class="guide-card"><span>02</span><h4>Unlock your vault</h4><p>Select your existing .nqv file and enter its password. Lock the vault whenever you leave your computer.</p></article>
         <article class="guide-card"><span>03</span><h4>Protect files and folders</h4><p>Unlock first, then choose a file or folder to encrypt. Original files are not deleted automatically.</p></article>
-        <article class="guide-card"><span>04</span><h4>Make a recovery backup</h4><p>Create an encrypted .nqb backup with a separate strong passphrase. Store it separately from your encrypted files.</p></article>
-        <article class="guide-card"><span>05</span><h4>Restore safely</h4><p>Use the backup passphrase to restore into a new vault. Keep the encrypted .nqx files and folder-vault data separately.</p></article>
+        <article class="guide-card"><span>04</span><h4>Make a vault-key backup</h4><p>The encrypted .nqb stores vault/key state only. It excludes .nqx files, folder manifests and encrypted folder objects. Keep all encrypted documents separately and store the backup passphrase away from the .nqb file.</p></article>
+        <article class="guide-card"><span>05</span><h4>Restore keys and documents</h4><p>Import the .nqb with its separate backup passphrase and create a new vault with a new vault password. The restored keys are then used to decrypt your separately preserved .nqx files and restore your encrypted folder data. This does not reveal or reset the original vault password.</p></article>
         <article class="guide-card"><span>06</span><h4>Important limitations</h4><p>Folder encryption currently supports files up to 32 MiB, skips empty folders and rejects symbolic links. This early-access release has not been independently audited.</p></article>
       </div>
     </section>
