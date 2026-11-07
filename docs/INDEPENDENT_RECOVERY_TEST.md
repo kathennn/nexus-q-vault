@@ -2,6 +2,8 @@
 
 The automated `recovery_works_across_independent_processes` integration test exercises the recovery API in two separately spawned processes. Each process receives a different, empty OS/application profile and its own working directory. The source process creates the vault, encrypted document payloads, folder vault and `.nqb` backup, then exits. The restore process starts without the source session or profile, imports the backup into a new vault using a new vault password, and decrypts the separately preserved payloads.
 
+The automated scenario also checks missing, truncated and corrupted backups, an existing destination that must remain untouched, missing and tampered individual-file payloads, and missing and tampered folder objects. Failed restores must not publish partial vaults or plaintext outputs.
+
 This process-level test does not replace acceptance testing of the packaged desktop application. Before a release, perform the following manual check on a clean machine or a separate OS user account for each supported desktop platform:
 
 1. Install the same supported Vault release in profile A. Create a test vault with a unique vault password.

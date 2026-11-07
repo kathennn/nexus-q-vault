@@ -200,6 +200,19 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
     );
     assert!(!wrong_password_destination.exists());
 
+    let missing_backup = installation.join("missing.nqb");
+    let missing_backup_destination = installation.join("missing-backup.nqv");
+    assert!(
+        backup::import(
+            &missing_backup,
+            BACKUP_PASSPHRASE,
+            &missing_backup_destination,
+            RECOVERED_PASSWORD,
+        )
+        .is_err()
+    );
+    assert!(!missing_backup_destination.exists());
+
     let corrupted_backup = installation.join("corrupted.nqb");
     let mut corrupted_bytes = fs::read(&backup_path)?;
     let last_byte = corrupted_bytes
@@ -219,6 +232,57 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
         .is_err()
     );
     assert!(!corrupted_destination.exists());
+
+    // Truncated headers and encrypted bodies must fail without creating a vault.
+    let truncated_bytes = fs::read(&backup_path)?;
+    let truncated_header = installation.join("truncated-header.nqb");
+    fs::write(&truncated_header, &truncated_bytes[..8])?;
+    let truncated_header_destination = installation.join("truncated-header.nqv");
+    assert!(
+        backup::import(
+            &truncated_header,
+            BACKUP_PASSPHRASE,
+            &truncated_header_destination,
+            RECOVERED_PASSWORD,
+        )
+        .is_err()
+    );
+    assert!(!truncated_header_destination.exists());
+
+    let header_len = u32::from_be_bytes(
+        truncated_bytes[4..8]
+            .try_into()
+            .expect("backup header length prefix"),
+    ) as usize;
+    let body_start = 8 + header_len;
+    let truncated_body = installation.join("truncated-body.nqb");
+    fs::write(&truncated_body, &truncated_bytes[..body_start + 12 + 8])?;
+    let truncated_body_destination = installation.join("truncated-body.nqv");
+    assert!(
+        backup::import(
+            &truncated_body,
+            BACKUP_PASSPHRASE,
+            &truncated_body_destination,
+            RECOVERED_PASSWORD,
+        )
+        .is_err()
+    );
+    assert!(!truncated_body_destination.exists());
+
+    // Import must not overwrite or modify an existing destination.
+    let existing_destination = installation.join("existing-destination.nqv");
+    let existing_contents = b"preserve pre-existing destination";
+    fs::write(&existing_destination, existing_contents)?;
+    assert!(
+        backup::import(
+            &backup_path,
+            BACKUP_PASSPHRASE,
+            &existing_destination,
+            RECOVERED_PASSWORD,
+        )
+        .is_err()
+    );
+    assert_eq!(fs::read(&existing_destination)?, existing_contents);
 
     let restored_vault = backup::import(
         &backup_path,
@@ -264,6 +328,18 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
     );
     assert!(!forbidden_output.exists());
 
+    // A missing encrypted file payload must fail without producing plaintext.
+    let missing_file_output = installation.join("missing-file-output.bin");
+    assert!(
+        restored_session
+            .decrypt_file(
+                &installation.join("missing-payload.nqx"),
+                &missing_file_output,
+            )
+            .is_err()
+    );
+    assert!(!missing_file_output.exists());
+
     let tampered_folder = installation.join("tampered-folder-vault");
     copy_directory(&package.join("payloads/folder-vault"), &tampered_folder)?;
     let object = fs::read_dir(tampered_folder.join("objects"))?
@@ -280,6 +356,28 @@ fn restore_in_independent_installation(root: &Path) -> Result<(), Box<dyn Error 
     let failed_folder_restore = installation.join("must-not-restore-folder");
     assert!(decrypt_folder(&restored_session, &tampered_folder, &failed_folder_restore,).is_err());
     assert!(!failed_folder_restore.exists());
+
+    // A missing folder object must also fail closed without publishing a folder.
+    let missing_object_folder = installation.join("missing-object-folder-vault");
+    copy_directory(
+        &package.join("payloads/folder-vault"),
+        &missing_object_folder,
+    )?;
+    let missing_object = fs::read_dir(missing_object_folder.join("objects"))?
+        .next()
+        .ok_or_else(|| std::io::Error::other("folder vault has no encrypted objects"))??
+        .path();
+    fs::remove_file(missing_object)?;
+    let failed_missing_folder = installation.join("must-not-restore-missing-folder");
+    assert!(
+        decrypt_folder(
+            &restored_session,
+            &missing_object_folder,
+            &failed_missing_folder,
+        )
+        .is_err()
+    );
+    assert!(!failed_missing_folder.exists());
 
     let restored_folder = installation.join("restored-folder");
     let restored_count = decrypt_folder(
