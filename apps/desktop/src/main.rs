@@ -490,11 +490,13 @@ fn main() {
             thread::spawn(move || {
                 loop {
                     thread::sleep(Duration::from_secs(1));
-                    let state = handle.state::<AppState>();
-                    if state.watchdog_stop.load(Ordering::Relaxed) {
+                    let should_stop = {
+                        let state = handle.state::<AppState>();
+                        state.watchdog_stop.load(Ordering::Relaxed)
+                    };
+                    if should_stop {
                         break;
                     }
-                    drop(state);
                     auto_lock_if_idle(&handle);
                 }
             });
