@@ -20,11 +20,13 @@ event-loop resume, the app attempts to lock any still-open session before
 refreshing the inactivity baseline. The frontend clears password fields and
 updates the locked status when it receives the lock event. Lock errors are
 surfaced to the interface; an exit request is prevented if saving the session
-fails. The current `nexus-q` `Session::lock(self)` API consumes the session
-before returning, including on error. Consequently, the desktop application
-cannot retain the in-memory session for retry if persistence fails. Fixing that
-guarantee requires a non-consuming lock API in the engine; this desktop change
-does not modify the separate `nexus-q` repository.
+fails. The desktop app uses the engine's `Session::lock_recoverable(self)`
+API: if persistence fails, the error returns ownership of the still-unlocked
+session, and the app restores it to managed state so the user can retry.
+Failed automatic attempts are throttled for 30 seconds to avoid repeatedly
+emitting the same error; new user activity clears that delay. The legacy
+`Session::lock(self)` API remains available for existing callers and retains
+its previous drop-on-error behavior.
 
 ## Platform limitation
 

@@ -23,6 +23,7 @@ struct AppState {
     session: Mutex<Option<Session>>,
     last_activity: Mutex<Instant>,
     idle_timeout: Mutex<Duration>,
+    auto_lock_retry_after: Mutex<Option<Instant>>,
     watchdog_stop: AtomicBool,
 }
 impl Default for AppState {
@@ -31,10 +32,13 @@ impl Default for AppState {
             session: Mutex::new(None),
             last_activity: Mutex::new(Instant::now()),
             idle_timeout: Mutex::new(Duration::from_secs(300)),
+            auto_lock_retry_after: Mutex::new(None),
             watchdog_stop: AtomicBool::new(false),
         }
     }
 }
+const AUTO_LOCK_RETRY_DELAY: Duration = Duration::from_secs(30);
+
 fn idle_timeout_from_seconds(seconds: u64) -> Result<Duration, String> {
     if seconds != 0 && ![60, 300, 600, 900, 1800].contains(&seconds) {
         return Err("El tiempo de inactividad seleccionado no es válido".into());
@@ -51,38 +55,75 @@ fn touch_activity(state: &AppState) -> Result<(), String> {
         .last_activity
         .lock()
         .map_err(|_| "No se pudo actualizar la actividad".to_string())? = Instant::now();
+    *state
+        .auto_lock_retry_after
+        .lock()
+        .map_err(|_| "No se pudo actualizar el estado de bloqueo".to_string())? = None;
     Ok(())
 }
+
+fn defer_auto_lock_retry(state: &AppState) {
+    if let Ok(mut retry_after) = state.auto_lock_retry_after.lock() {
+        *retry_after = Some(Instant::now() + AUTO_LOCK_RETRY_DELAY);
+    }
+}
+fn lock_session_slot(slot: &mut Option<Session>) -> Result<bool, String> {
+    let Some(session) = slot.take() else {
+        return Ok(false);
+    };
+    match session.lock_recoverable() {
+        Ok(_) => Ok(true),
+        Err(failure) => {
+            let (session, error) = failure.into_parts();
+            *slot = Some(session);
+            Err(format!("No se pudo guardar y bloquear el vault: {error}"))
+        }
+    }
+}
+
 fn lock_session(state: &AppState) -> Result<bool, String> {
     let mut guard = state
         .session
         .lock()
         .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
-    let Some(session) = guard.take() else {
-        return Ok(false);
-    };
-    session
-        .lock()
-        .map_err(|error| format!("No se pudo guardar y bloquear el vault: {error}"))?;
-    drop(guard);
-    Ok(true)
+    let result = lock_session_slot(&mut guard);
+    if result.is_err() {
+        defer_auto_lock_retry(state);
+    }
+    result
 }
-fn auto_lock_if_idle(app: &AppHandle) {
-    let state = app.state::<AppState>();
+#[derive(Debug, PartialEq, Eq)]
+enum AutoLockOutcome {
+    NotDue,
+    Locked,
+    Failed(String),
+}
+
+fn auto_lock_state(state: &AppState) -> AutoLockOutcome {
+    let now = Instant::now();
+    let retry_after = match state.auto_lock_retry_after.lock() {
+        Ok(value) => *value,
+        Err(_) => return AutoLockOutcome::NotDue,
+    };
+    if retry_after.is_some_and(|deadline| now < deadline) {
+        return AutoLockOutcome::NotDue;
+    }
+
     let timeout = match state.idle_timeout.lock() {
         Ok(value) => *value,
-        Err(_) => return,
+        Err(_) => return AutoLockOutcome::NotDue,
     };
     let last_activity = match state.last_activity.lock() {
         Ok(value) => *value,
-        Err(_) => return,
+        Err(_) => return AutoLockOutcome::NotDue,
     };
-    if !inactivity_elapsed(last_activity, Instant::now(), timeout) {
-        return;
+    if !inactivity_elapsed(last_activity, now, timeout) {
+        return AutoLockOutcome::NotDue;
     }
+
     let mut session = match state.session.lock() {
         Ok(value) => value,
-        Err(_) => return,
+        Err(_) => return AutoLockOutcome::NotDue,
     };
     let still_idle = state
         .last_activity
@@ -90,18 +131,32 @@ fn auto_lock_if_idle(app: &AppHandle) {
         .map(|last| inactivity_elapsed(*last, Instant::now(), timeout))
         .unwrap_or(false);
     if !still_idle || session.is_none() {
-        return;
+        return AutoLockOutcome::NotDue;
     }
-    let Some(active) = session.take() else {
-        return;
-    };
-    let lock_result = active.lock();
-    drop(session);
-    match lock_result {
-        Ok(_) => {
+
+    match lock_session_slot(&mut session) {
+        Ok(true) => {
+            if let Ok(mut retry_after) = state.auto_lock_retry_after.lock() {
+                *retry_after = None;
+            }
+            AutoLockOutcome::Locked
+        }
+        Ok(false) => AutoLockOutcome::NotDue,
+        Err(error) => {
+            defer_auto_lock_retry(state);
+            AutoLockOutcome::Failed(error)
+        }
+    }
+}
+
+fn auto_lock_if_idle(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    match auto_lock_state(&state) {
+        AutoLockOutcome::NotDue => {}
+        AutoLockOutcome::Locked => {
             let _ = app.emit("vault-auto-locked", "inactivity");
         }
-        Err(error) => {
+        AutoLockOutcome::Failed(error) => {
             let _ = app.emit(
                 "vault-lock-failed",
                 format!("No se pudo guardar y bloquear automáticamente el vault: {error}"),
@@ -553,8 +608,31 @@ fn main() {
 
 #[cfg(test)]
 mod idle_lock_tests {
-    use super::{idle_timeout_from_seconds, inactivity_elapsed, touch_activity, AppState};
-    use std::time::{Duration, Instant};
+    use super::{
+        AppState, AutoLockOutcome, auto_lock_state, idle_timeout_from_seconds, inactivity_elapsed,
+        lock_session_slot, touch_activity,
+    };
+    use nexusq_core::vault::Vault;
+    use std::{
+        sync::{Arc, mpsc},
+        thread,
+        time::{Duration, Instant},
+    };
+
+    fn state_with_idle_unlocked_vault(dir: &tempfile::TempDir) -> AppState {
+        let vault_path = dir.path().join("vault.nqv");
+        Vault::create(&vault_path, b"test-password", None).unwrap();
+        let session = Vault::open(&vault_path)
+            .unwrap()
+            .unlock(b"test-password")
+            .unwrap();
+
+        let state = AppState::default();
+        *state.session.lock().unwrap() = Some(session);
+        *state.idle_timeout.lock().unwrap() = Duration::from_secs(60);
+        *state.last_activity.lock().unwrap() = Instant::now() - Duration::from_secs(61);
+        state
+    }
 
     #[test]
     fn accepts_only_supported_idle_timeouts() {
@@ -586,6 +664,95 @@ mod idle_lock_tests {
             Instant::now(),
             timeout
         ));
+    }
+
+    #[test]
+    fn idle_lock_happens_only_once_for_a_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with_idle_unlocked_vault(&dir);
+
+        assert_eq!(auto_lock_state(&state), AutoLockOutcome::Locked);
+        assert!(state.session.lock().unwrap().is_none());
+        assert_eq!(auto_lock_state(&state), AutoLockOutcome::NotDue);
+    }
+
+    #[test]
+    fn idle_lock_waits_for_an_operation_holding_the_session_mutex() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = Arc::new(state_with_idle_unlocked_vault(&dir));
+        let operation_guard = state.session.lock().unwrap();
+        let worker_state = Arc::clone(&state);
+        let (started_tx, started_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+
+        let worker = thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            result_tx.send(auto_lock_state(&worker_state)).unwrap();
+        });
+
+        started_rx.recv().unwrap();
+        assert!(result_rx.recv_timeout(Duration::from_millis(100)).is_err());
+        drop(operation_guard);
+
+        assert_eq!(
+            result_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+            AutoLockOutcome::Locked
+        );
+        worker.join().unwrap();
+        assert!(state.session.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn failed_auto_lock_preserves_session_and_defers_retries() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with_idle_unlocked_vault(&dir);
+        let vault_path = dir.path().join("vault.nqv");
+        std::fs::remove_file(&vault_path).unwrap();
+        std::fs::create_dir(&vault_path).unwrap();
+
+        assert!(matches!(
+            auto_lock_state(&state),
+            AutoLockOutcome::Failed(_)
+        ));
+        assert!(state.session.lock().unwrap().is_some());
+        assert_eq!(auto_lock_state(&state), AutoLockOutcome::NotDue);
+    }
+
+    #[test]
+    fn successful_lock_removes_the_session_from_application_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("vault.nqv");
+        Vault::create(&vault_path, b"test-password", None).unwrap();
+        let session = Vault::open(&vault_path)
+            .unwrap()
+            .unlock(b"test-password")
+            .unwrap();
+
+        let mut slot = Some(session);
+        assert!(lock_session_slot(&mut slot).unwrap());
+        assert!(slot.is_none());
+    }
+
+    #[test]
+    fn failed_lock_keeps_the_session_in_application_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("vault.nqv");
+        Vault::create(&vault_path, b"test-password", None).unwrap();
+        let session = Vault::open(&vault_path)
+            .unwrap()
+            .unlock(b"test-password")
+            .unwrap();
+
+        // Replace the vault file with a directory so the lock write fails.
+        std::fs::remove_file(&vault_path).unwrap();
+        std::fs::create_dir(&vault_path).unwrap();
+
+        let mut slot = Some(session);
+        assert!(lock_session_slot(&mut slot).is_err());
+        assert!(
+            slot.is_some(),
+            "failed locking must not discard the session"
+        );
     }
 
     #[test]
