@@ -210,10 +210,11 @@ document.addEventListener("visibilitychange", async () => {
   if (document.hidden) {
     try {
       await invoke("lock_vault");
-      clearAllSecrets();
-      await refreshStatus();
     } catch (error) {
       if (!String(error).includes("No hay ningún vault desbloqueado")) showMessage(String(error), true);
+    } finally {
+      clearAllSecrets();
+      await refreshStatus();
     }
   } else {
     await refreshStatus();
@@ -246,6 +247,7 @@ window.__TAURI__.event.listen("vault-auto-locked", async () => {
   showMessage(preference("language", "en") === "es" ? "El vault se bloqueó automáticamente por seguridad." : "The vault was automatically locked for security.");
 }).catch((error) => showMessage(String(error), true));
 window.__TAURI__.event.listen("vault-lock-failed", (event) => {
+  clearAllSecrets();
   showMessage(String(event.payload), true);
   refreshStatus();
 }).catch((error) => showMessage(String(error), true));
