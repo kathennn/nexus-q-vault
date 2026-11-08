@@ -67,8 +67,34 @@ async function refreshStatus() {
 
 function submit(formId, command, fields) {
   const form = $(formId);
+  form.querySelectorAll("[data-confirm-for]").forEach((confirmation) => {
+    const password = $(confirmation.dataset.confirmFor);
+    [password, confirmation].forEach((input) => {
+      input.addEventListener("input", () => confirmation.setCustomValidity(""));
+    });
+  });
+  const handleConfirmedSubmit = passwordConfirmation.createConfirmedFormSubmit({
+    readConfirmations: () => [...form.querySelectorAll("[data-confirm-for]")].map((confirmation) => ({
+      input: confirmation,
+      value: $(confirmation.dataset.confirmFor).value,
+      confirmation: confirmation.value,
+    })),
+    onMismatch: ({ input }) => {
+      const message = preference("language", "en") === "es"
+        ? "Las contraseñas no coinciden. Comprueba ambos campos."
+        : "Passwords do not match. Check both fields.";
+      input.setCustomValidity(message);
+      input.reportValidity();
+      input.focus();
+      showMessage(message, true);
+    },
+    onMatch: () => invoke(command, Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]))),
+  });
   form.addEventListener("submit", async (event) => {
-    event.preventDefault();
+    const validation = handleConfirmedSubmit(event);
+    if (!validation.matched) return;
+    const confirmations = [...form.querySelectorAll("[data-confirm-for]")];
+    confirmations.forEach((confirmation) => confirmation.setCustomValidity(""));
     const button = form.querySelector('button[type="submit"]');
     const originalLabel = button.textContent;
     button.disabled = true;
@@ -76,8 +102,7 @@ function submit(formId, command, fields) {
     form.setAttribute("aria-busy", "true");
     showMessage("Operación en curso. Espera a que termine.");
     try {
-      const args = Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]));
-      showMessage(await invoke(command, args));
+      showMessage(await validation.result);
     } catch (error) {
       showMessage(String(error), true);
     } finally {
@@ -118,20 +143,23 @@ function bindPicker(buttonId, inputId, command, kind, transform = (path) => path
   });
 }
 
-submit("create-form", "create_vault", [["path", "create-path"], ["password", "create-password"]]);
+submit("create-form", "create_vault", [["path", "create-path"], ["password", "create-password"], ["passwordConfirmation", "create-password-confirm"]]);
 submit("open-form", "open_vault", [["path", "open-path"], ["password", "open-password"]]);
 submit("encrypt-form", "encrypt_file", [["inputPath", "encrypt-path"]]);
 submit("decrypt-form", "decrypt_file", [["inputPath", "decrypt-input"], ["outputPath", "decrypt-output"]]);
 submit("encrypt-folder-form", "encrypt_folder", [["sourcePath", "encrypt-folder-source"], ["vaultFolderPath", "encrypt-folder-output"]]);
 submit("decrypt-folder-form", "decrypt_folder", [["vaultFolderPath", "decrypt-folder-source"], ["destinationPath", "decrypt-folder-output"]]);
-submit("backup-form", "export_backup", [["backupPath", "backup-path"], ["backupPassphrase", "backup-password"]]);
-submit("restore-form", "import_backup", [["backupPath", "restore-backup-path"], ["backupPassphrase", "restore-backup-password"], ["newVaultPath", "restore-vault-path"], ["newVaultPassword", "restore-vault-password"]]);
+submit("backup-form", "export_backup", [["backupPath", "backup-path"], ["backupPassphrase", "backup-password"], ["backupPassphraseConfirmation", "backup-password-confirm"]]);
+submit("restore-form", "import_backup", [["backupPath", "restore-backup-path"], ["backupPassphrase", "restore-backup-password"], ["newVaultPath", "restore-vault-path"], ["newVaultPassword", "restore-vault-password"], ["newVaultPasswordConfirmation", "restore-vault-password-confirm"]]);
 
 bindSecretToggle("create-password-toggle", "create-password");
+bindSecretToggle("create-password-confirm-toggle", "create-password-confirm");
 bindSecretToggle("open-password-toggle", "open-password");
 bindSecretToggle("backup-password-toggle", "backup-password");
+bindSecretToggle("backup-password-confirm-toggle", "backup-password-confirm");
 bindSecretToggle("restore-backup-password-toggle", "restore-backup-password");
 bindSecretToggle("restore-vault-password-toggle", "restore-vault-password");
+bindSecretToggle("restore-vault-password-confirm-toggle", "restore-vault-password-confirm");
 
 bindPicker("create-path-picker", "create-path", "pick_save_path", "vault");
 bindPicker("open-path-picker", "open-path", "pick_file_path", "vault");
@@ -240,6 +268,7 @@ Object.assign(translations, {
   "Restore folder":"Restaurar carpeta", "The destination folder must be new. The manifest and every encrypted object are validated.":"La carpeta de destino debe ser nueva. Se validan el manifiesto y cada objeto cifrado.", "Vault folder":"Carpeta vault", "A new folder is suggested inside the selected location.":"Se propone una carpeta nueva dentro de la ubicación elegida.", "Restore entire folder":"Restaurar carpeta completa",
   "Create backup":"Crear backup", "Protects the container and its keys; it does not include .nqx files or protected folders.":"Protege el contenedor y sus claves; no incluye los archivos .nqx ni las carpetas protegidas.", "Backup location":"Ruta del backup", "Backup password":"Contraseña del backup", "Confirm backup password":"Confirmar contraseña del backup", "Create key backup":"Crear backup de claves",
   "Restore backup":"Restaurar backup", "Restores keys into a new vault. Encrypted files are stored separately.":"Restaura las claves en un vault nuevo. Los archivos cifrados se conservan aparte.", "Backup .nqb":"Backup .nqb", "New vault password":"Nueva contraseña del vault", "Confirm new password":"Confirmar nueva contraseña", "Restore to new vault":"Restaurar en nuevo vault",
+  "Create vault-key backup":"Crear backup de claves del vault", "The .nqb file protects vault state and keys; it is not a copy of your documents.":"El archivo .nqb protege el estado del vault y sus claves; no es una copia de tus documentos.", "What this backup contains":"Qué guarda este backup", "Includes:":"Incluye:", "Encrypted vault state and the key material needed to recover it.":"El estado cifrado del vault y el material de claves necesario para recuperarlo.", "Does not include:":"No incluye:", "Individual .nqx files, manifest.nqm files or encrypted folder objects.":"Archivos .nqx, manifiestos manifest.nqm ni objetos de carpetas cifradas.", "Keep the .nqb and copies of every .nqx file and encrypted folder separately. The backup passphrase is independent of the vault password; store it away from the backup file.":"Conserva por separado el .nqb y copias de todos tus archivos .nqx y carpetas cifradas. La contraseña del backup es independiente de la contraseña del vault; guárdala aparte del archivo.", "Restore vault-key backup":"Restaurar backup de claves", "Import vault state from a .nqb file and create a new vault.":"Importa el estado del vault desde un .nqb y crea un vault nuevo.", "Before restoring: you need these two recovery components":"Antes de restaurar: necesitas estos dos componentes de recuperación", "Enter the separate passphrase used to create the .nqb file.":"Introduce la contraseña independiente con la que se creó el .nqb.", "The import creates a new vault protected by the new password you choose here.":"La importación crea un vault nuevo protegido con la contraseña nueva que elijas aquí.", "Required: the .nqb vault-key backup and its separate passphrase.":"Necesitas el backup de claves del vault (.nqb) y su contraseña independiente.", "Also required: separately preserved encrypted payloads (.nqx files and encrypted folder data).":"También necesitas los documentos cifrados conservados por separado (archivos .nqx y datos de carpetas cifradas).", "The restored keys are used to decrypt the separately preserved .nqx files and restore the encrypted folder data.":"Después de importar el .nqb en un vault nuevo, utiliza las claves restauradas para descifrar los archivos .nqx y restaurar los datos de las carpetas cifradas.", "The .nqb does not contain encrypted documents and cannot reveal, recover or reset the original vault password. Without the .nqb, its passphrase and the separately preserved encrypted payloads, recovery may be impossible.":"El .nqb no contiene documentos cifrados y no revela, recupera ni restablece la contraseña original del vault. Sin el .nqb, su contraseña y los payloads cifrados conservados por separado, la recuperación puede ser imposible.", "Make a vault-key backup":"Crea un backup de claves del vault", "The encrypted .nqb stores vault/key state only. It excludes .nqx files, folder manifests and encrypted folder objects. Keep all encrypted documents separately and store the backup passphrase away from the .nqb file.":"El .nqb cifrado solo guarda el estado y las claves del vault. Excluye los archivos .nqx, los manifiestos de carpetas y sus objetos cifrados. Conserva todos los documentos cifrados por separado y guarda la contraseña del backup aparte del archivo .nqb.", "Restore keys and documents":"Restaura las claves y los documentos", "Import the .nqb with its separate backup passphrase and create a new vault with a new vault password. The restored keys are then used to decrypt your separately preserved .nqx files and restore your encrypted folder data. This does not reveal or reset the original vault password.":"Importa el .nqb con su contraseña independiente y crea un vault nuevo con una contraseña nueva. Después utiliza las claves restauradas para descifrar los archivos .nqx y restaurar los datos de las carpetas cifradas que conservaste por separado. Esto no revela ni restablece la contraseña original del vault.",
   "THE PROBLEM":"EL PROBLEMA", "Your information deserves more than trusting a folder.":"Tu información merece algo más que confiar en una carpeta.", "A device can be lost, shared or exposed. Sensitive documents often end up mixed with everyday files, without a clear layer of protection or an orderly way to recover access.":"Un dispositivo puede perderse, compartirse o quedar expuesto. Los documentos sensibles suelen acabar mezclados con archivos cotidianos, sin una capa clara de protección ni una forma ordenada de recuperar el acceso.", "Local protection":"Protección local", "Encrypt files and folders from your computer. Cryptographic work happens in the app; your originals remain untouched.":"Cifra archivos y carpetas desde tu equipo. El trabajo criptográfico se realiza en la aplicación; tus originales permanecen intactos.", "Recovery, planned":"Recuperación preparada", "Create password-protected .nqb backups with a separate passphrase to restore keys into a new vault.":"Crea backups .nqb protegidos con una contraseña independiente para restaurar las claves en un vault nuevo.", "Transparent control":"Control transparente", "Choose where each vault, encrypted file and backup lives. No telemetry and no automatic deletion of originals.":"Elige dónde guardar cada vault, cada archivo cifrado y cada backup. Sin telemetría y sin borrar automáticamente los originales.", "A SIMPLE WORKFLOW":"UN FLUJO SENCILLO", "From everyday file to protected file.":"De archivo normal a archivo protegido.", "Create or open your vault":"Crea o abre tu vault", "Unlock it":"Desbloquéalo", "Encrypt your files":"Cifra tus archivos", "Save a backup":"Guarda un backup", "One important thing":"Una idea importante", "The vault protects the keys; .nqx files and encrypted folders are stored separately. Keep your password and backup in safe places too.":"El vault protege las claves; los archivos .nqx y las carpetas cifradas se guardan por separado. Conserva también tu contraseña y tu backup en lugares seguros.", "Read the user guide →":"Leer la guía de usuario →", "WORKSPACE":"ESPACIO DE TRABAJO", "Overview":"Resumen", "Vault access":"Acceso al vault", "File operations":"Operaciones con archivos", "Settings":"Ajustes", "Help & guide":"Ayuda y guía", "OPEN SOURCE":"CÓDIGO ABIERTO", "Build security with us.":"Construyamos seguridad juntos.", "Explore the project, contribute ideas and leave a star on GitHub.":"Explora el proyecto, colabora y deja una estrella en GitHub.", "View NEXUS-Q repository ↗":"Ver repositorio NEXUS-Q ↗", "Local user":"Usuario local", "LOCAL PROFILE":"PERFIL LOCAL", "LOCAL-FIRST SECURITY":"SEGURIDAD LOCAL", "Light mode":"Modo claro", "Dark mode":"Modo oscuro",
   "PREFERENCES":"PREFERENCIAS", "Settings & profile":"Ajustes y perfil", "Public release · v0.1.0":"Lanzamiento público · v0.1.0", "Local profile":"Perfil local", "Your profile stays on this device and is not uploaded.":"Tu perfil permanece en este dispositivo y no se sube a ningún servidor.", "Display name":"Nombre visible", "Profile photo":"Foto de perfil", "Stored locally in this app.":"Guardada localmente en esta aplicación.", "Save profile":"Guardar perfil", "Appearance":"Apariencia", "Make Vault feel like your workspace.":"Adapta Vault a tu espacio de trabajo.", "Accent color":"Color de acento", "Typography":"Tipografía", "System minimal":"Sistema minimalista", "Elegant serif":"Serif elegante", "Monospace":"Monoespaciada", "The default palette is monochrome. Your accent and font choices are saved locally.":"La paleta predeterminada es monocromática. Tus colores y tipografía se guardan localmente.", "Apply appearance":"Aplicar apariencia", "Application":"Aplicación", "Build information and important limitations.":"Información de versión y limitaciones importantes.", "Version":"Versión", "0.1.0 · Public release":"0.1.0 · Lanzamiento público", "Data location":"Ubicación de los datos", "On this device":"En este dispositivo", "Telemetry":"Telemetría", "Disabled":"Desactivada", "This early-access release has not been independently audited. Keep separate backups of encrypted payloads and recovery material.":"Esta versión de acceso anticipado no ha sido auditada de forma independiente. Conserva copias separadas de los archivos cifrados y del material de recuperación.",
   "GETTING STARTED":"PRIMEROS PASOS", "Help & user guide":"Ayuda y guía de usuario", "Create your vault":"Crea tu vault", "Choose a location, create a strong unique password and keep it safe. The vault file stores your protected key material.":"Elige una ubicación, crea una contraseña única y robusta y guárdala de forma segura. El archivo vault almacena tus claves protegidas.", "Unlock your vault":"Desbloquea tu vault", "Select your existing .nqv file and enter its password. Lock the vault whenever you leave your computer.":"Selecciona tu archivo .nqv e introduce su contraseña. Bloquea el vault cuando te alejes del ordenador.", "Protect files and folders":"Protege archivos y carpetas", "Unlock first, then choose a file or folder to encrypt. Original files are not deleted automatically.":"Primero desbloquea el vault y después elige un archivo o carpeta para cifrar. Los originales no se eliminan automáticamente.", "Make a recovery backup":"Crea un backup de recuperación", "Create an encrypted .nqb backup with a separate strong passphrase. Store it separately from your encrypted files.":"Crea un backup .nqb cifrado con una contraseña independiente y robusta. Guárdalo separado de tus archivos cifrados.", "Restore safely":"Restaura de forma segura", "Use the backup passphrase to restore into a new vault. Keep the encrypted .nqx files and folder-vault data separately.":"Utiliza la contraseña del backup para restaurar en un vault nuevo. Conserva por separado los archivos .nqx y los datos de las carpetas vault.", "Important limitations":"Limitaciones importantes", "Folder encryption currently supports files up to 32 MiB, skips empty folders and rejects symbolic links. This early-access release has not been independently audited.":"El cifrado de carpetas admite archivos de hasta 32 MiB, omite carpetas vacías y rechaza enlaces simbólicos. Esta versión de acceso anticipado no ha sido auditada de forma independiente.", "Made for privacy":"Diseñado para la privacidad",

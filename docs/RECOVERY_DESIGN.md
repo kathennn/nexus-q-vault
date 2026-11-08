@@ -15,7 +15,7 @@ A backup is encrypted with a passphrase independent from the vault password. Imp
 3. Store the backup file separately from the device. Store the backup passphrase separately from the backup file.
 4. Keep the encrypted `.nqx` file envelopes or complete folder-vault directories as well. The current backup format contains vault/key state, not the encrypted file payloads or folder objects.
 5. Test recovery by importing the backup to a new vault path with a new vault password, then decrypting a known test envelope. Do not overwrite or delete the original vault during this test.
-6. If the original vault password is lost, import the backup with its backup passphrase into a new vault using a new password, then open the separately preserved `.nqx` files or folder-vault directories.
+6. If the original vault password is lost, import the backup with its backup passphrase into a new vault using a new password, then use the restored keys to decrypt the separately preserved `.nqx` files and restore the encrypted folder-vault directories.
 
 ## Failure and security properties
 
@@ -23,7 +23,7 @@ A backup is encrypted with a passphrase independent from the vault password. Imp
 - The backup passphrase must not be stored beside the backup file.
 - Losing both the original vault password and the backup passphrase means the vault cannot be recovered through this proposal.
 - Losing the backup file means there is no backup-based recovery.
-- A backup is not a copy of the encrypted documents in the current prototype; both the key backup and the encrypted `.nqx` or folder-vault payloads must be preserved.
+- A backup is not a copy of the encrypted documents in the current prototype; both required recovery components must be preserved: the `.nqb` vault-key backup (and its separate passphrase), plus the separately stored encrypted `.nqx` files and folder-vault payloads. After importing the `.nqb` into a new vault, the restored keys are used to decrypt those payloads.
 - Import creates a new vault at a new path. The original vault is left untouched.
 - Do not claim secure deletion, password reset, phrase recovery, or protection from malware on an unlocked device.
 
