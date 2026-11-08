@@ -7,14 +7,170 @@ use nexusq_core::{
     storage::backup,
     vault::{Algorithm, KeyId, KeyStatus, Purpose, Session, Vault},
 };
-use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use std::{
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+    time::{Duration, Instant},
+};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_dialog::{DialogExt, FilePath};
 use zeroize::Zeroizing;
 
-#[derive(Default)]
 struct AppState {
     session: Mutex<Option<Session>>,
+    last_activity: Mutex<Instant>,
+    idle_timeout: Mutex<Duration>,
+    auto_lock_retry_after: Mutex<Option<Instant>>,
+    watchdog_stop: AtomicBool,
+}
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            session: Mutex::new(None),
+            last_activity: Mutex::new(Instant::now()),
+            idle_timeout: Mutex::new(Duration::from_secs(300)),
+            auto_lock_retry_after: Mutex::new(None),
+            watchdog_stop: AtomicBool::new(false),
+        }
+    }
+}
+const AUTO_LOCK_RETRY_DELAY: Duration = Duration::from_secs(30);
+
+fn idle_timeout_from_seconds(seconds: u64) -> Result<Duration, String> {
+    if seconds != 0 && ![60, 300, 600, 900, 1800].contains(&seconds) {
+        return Err("El tiempo de inactividad seleccionado no es válido".into());
+    }
+    Ok(Duration::from_secs(seconds))
+}
+
+fn inactivity_elapsed(last_activity: Instant, now: Instant, timeout: Duration) -> bool {
+    !timeout.is_zero() && now.duration_since(last_activity) >= timeout
+}
+
+fn touch_activity(state: &AppState) -> Result<(), String> {
+    *state
+        .last_activity
+        .lock()
+        .map_err(|_| "No se pudo actualizar la actividad".to_string())? = Instant::now();
+    *state
+        .auto_lock_retry_after
+        .lock()
+        .map_err(|_| "No se pudo actualizar el estado de bloqueo".to_string())? = None;
+    Ok(())
+}
+
+fn defer_auto_lock_retry(state: &AppState) {
+    if let Ok(mut retry_after) = state.auto_lock_retry_after.lock() {
+        *retry_after = Some(Instant::now() + AUTO_LOCK_RETRY_DELAY);
+    }
+}
+fn lock_session_slot(slot: &mut Option<Session>) -> Result<bool, String> {
+    let Some(session) = slot.take() else {
+        return Ok(false);
+    };
+    match session.lock_recoverable() {
+        Ok(_) => Ok(true),
+        Err(failure) => {
+            let (session, error) = failure.into_parts();
+            *slot = Some(session);
+            Err(format!("No se pudo guardar y bloquear el vault: {error}"))
+        }
+    }
+}
+
+fn lock_session(state: &AppState) -> Result<bool, String> {
+    let mut guard = state
+        .session
+        .lock()
+        .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
+    let result = lock_session_slot(&mut guard);
+    if result.is_err() {
+        defer_auto_lock_retry(state);
+    }
+    result
+}
+
+fn resume_session(state: &AppState) -> Result<bool, String> {
+    // A failed resume lock must retain the old inactivity deadline and retry
+    // throttle; treating resume as fresh activity would postpone protection.
+    let locked = lock_session(state)?;
+    touch_activity(state)?;
+    Ok(locked)
+}
+#[derive(Debug, PartialEq, Eq)]
+enum AutoLockOutcome {
+    NotDue,
+    Locked,
+    Failed(String),
+}
+
+fn auto_lock_state(state: &AppState) -> AutoLockOutcome {
+    let now = Instant::now();
+    let retry_after = match state.auto_lock_retry_after.lock() {
+        Ok(value) => *value,
+        Err(_) => return AutoLockOutcome::NotDue,
+    };
+    if retry_after.is_some_and(|deadline| now < deadline) {
+        return AutoLockOutcome::NotDue;
+    }
+
+    let timeout = match state.idle_timeout.lock() {
+        Ok(value) => *value,
+        Err(_) => return AutoLockOutcome::NotDue,
+    };
+    let last_activity = match state.last_activity.lock() {
+        Ok(value) => *value,
+        Err(_) => return AutoLockOutcome::NotDue,
+    };
+    if !inactivity_elapsed(last_activity, now, timeout) {
+        return AutoLockOutcome::NotDue;
+    }
+
+    let mut session = match state.session.lock() {
+        Ok(value) => value,
+        Err(_) => return AutoLockOutcome::NotDue,
+    };
+    let still_idle = state
+        .last_activity
+        .lock()
+        .map(|last| inactivity_elapsed(*last, Instant::now(), timeout))
+        .unwrap_or(false);
+    if !still_idle || session.is_none() {
+        return AutoLockOutcome::NotDue;
+    }
+
+    match lock_session_slot(&mut session) {
+        Ok(true) => {
+            if let Ok(mut retry_after) = state.auto_lock_retry_after.lock() {
+                *retry_after = None;
+            }
+            AutoLockOutcome::Locked
+        }
+        Ok(false) => AutoLockOutcome::NotDue,
+        Err(error) => {
+            defer_auto_lock_retry(state);
+            AutoLockOutcome::Failed(error)
+        }
+    }
+}
+
+fn auto_lock_if_idle(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    match auto_lock_state(&state) {
+        AutoLockOutcome::NotDue => {}
+        AutoLockOutcome::Locked => {
+            let _ = app.emit("vault-auto-locked", "inactivity");
+        }
+        AutoLockOutcome::Failed(error) => {
+            let _ = app.emit(
+                "vault-lock-failed",
+                format!("No se pudo guardar y bloquear automáticamente el vault: {error}"),
+            );
+        }
+    }
 }
 
 fn secret_bytes(value: String) -> Zeroizing<Vec<u8>> {
@@ -66,7 +222,29 @@ fn vault_status(state: State<'_, AppState>) -> Result<bool, String> {
         .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
     Ok(guard.is_some())
 }
+fn record_activity_state(state: &AppState) -> Result<(), String> {
+    // Activity must remain observable while a long-running operation holds the
+    // session mutex; auto_lock_state rechecks this timestamp before locking.
+    touch_activity(state)
+}
 
+#[tauri::command]
+fn record_activity(state: State<'_, AppState>) -> Result<(), String> {
+    record_activity_state(&state)
+}
+#[tauri::command]
+fn set_idle_timeout(state: State<'_, AppState>, seconds: u64) -> Result<(), String> {
+    let timeout = idle_timeout_from_seconds(seconds)?;
+    let _session = state
+        .session
+        .lock()
+        .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
+    *state
+        .idle_timeout
+        .lock()
+        .map_err(|_| "No se pudo guardar el tiempo de bloqueo".to_string())? = timeout;
+    touch_activity(&state)
+}
 #[tauri::command]
 fn create_vault(
     state: State<'_, AppState>,
@@ -107,6 +285,7 @@ fn create_vault(
         .unlock(password.as_slice())
         .map_err(|e| format!("No se pudo verificar el vault creado: {e}"))?;
     *guard = Some(session);
+    touch_activity(&state)?;
     Ok("Vault creado, verificado y desbloqueado".into())
 }
 
@@ -131,22 +310,17 @@ fn open_vault(
         .and_then(|vault| vault.unlock(password.as_slice()))
         .map_err(|e| format!("No se pudo desbloquear el vault: {e}"))?;
     *guard = Some(session);
+    touch_activity(&state)?;
     Ok("Vault desbloqueado".into())
 }
 
 #[tauri::command]
 fn lock_vault(state: State<'_, AppState>) -> Result<String, String> {
-    let mut guard = state
-        .session
-        .lock()
-        .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
-    let session = guard
-        .take()
-        .ok_or_else(|| "No hay ningún vault desbloqueado".to_string())?;
-    session
-        .lock()
-        .map_err(|e| format!("No se pudo guardar y bloquear el vault: {e}"))?;
-    Ok("Vault guardado y bloqueado".into())
+    if lock_session(&state)? {
+        Ok("Vault guardado y bloqueado".into())
+    } else {
+        Err("No hay ningún vault desbloqueado".into())
+    }
 }
 
 #[tauri::command]
@@ -290,6 +464,7 @@ fn import_backup(
         .unlock(password.as_slice())
         .map_err(|e| format!("No se pudo verificar el vault restaurado: {e}"))?;
     *guard = Some(session);
+    touch_activity(&state)?;
     Ok("Backup restaurado en un nuevo vault y verificado".into())
 }
 
@@ -402,8 +577,27 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            thread::spawn(move || {
+                loop {
+                    thread::sleep(Duration::from_secs(1));
+                    let should_stop = {
+                        let state = handle.state::<AppState>();
+                        state.watchdog_stop.load(Ordering::Relaxed)
+                    };
+                    if should_stop {
+                        break;
+                    }
+                    auto_lock_if_idle(&handle);
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             vault_status,
+            record_activity,
+            set_idle_timeout,
             create_vault,
             open_vault,
             lock_vault,
@@ -418,8 +612,254 @@ fn main() {
             pick_folder_path,
             open_project_repository
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running NEXUS-Q Vault");
+        .build(tauri::generate_context!())
+        .expect("error while building NEXUS-Q Vault")
+        .run(|app, event| match event {
+            RunEvent::ExitRequested { api, .. } => {
+                let state = app.state::<AppState>();
+                if let Err(error) = lock_session(&state) {
+                    let _ = app.emit("vault-lock-failed", error);
+                    api.prevent_exit();
+                }
+            }
+            RunEvent::Resumed => {
+                let state = app.state::<AppState>();
+                match resume_session(&state) {
+                    Ok(true) => {
+                        let _ = app.emit("vault-auto-locked", "system-resume");
+                    }
+                    Ok(false) => {}
+                    Err(error) => {
+                        let _ = app.emit("vault-lock-failed", error);
+                    }
+                }
+            }
+            RunEvent::Exit => app
+                .state::<AppState>()
+                .watchdog_stop
+                .store(true, Ordering::Relaxed),
+            _ => {}
+        });
+}
+
+#[cfg(test)]
+mod idle_lock_tests {
+    use super::{
+        AppState, AutoLockOutcome, auto_lock_state, idle_timeout_from_seconds, inactivity_elapsed,
+        lock_session, lock_session_slot, record_activity_state, resume_session, touch_activity,
+    };
+    use nexusq_core::vault::Vault;
+    use std::{
+        sync::{Arc, mpsc},
+        thread,
+        time::{Duration, Instant},
+    };
+
+    fn state_with_idle_unlocked_vault(dir: &tempfile::TempDir) -> AppState {
+        let vault_path = dir.path().join("vault.nqv");
+        Vault::create(&vault_path, b"test-password", None).unwrap();
+        let session = Vault::open(&vault_path)
+            .unwrap()
+            .unlock(b"test-password")
+            .unwrap();
+
+        let state = AppState::default();
+        *state.session.lock().unwrap() = Some(session);
+        *state.idle_timeout.lock().unwrap() = Duration::from_secs(60);
+        *state.last_activity.lock().unwrap() = Instant::now() - Duration::from_secs(61);
+        state
+    }
+
+    #[test]
+    fn accepts_only_supported_idle_timeouts() {
+        for seconds in [0, 60, 300, 600, 900, 1800] {
+            assert_eq!(
+                idle_timeout_from_seconds(seconds),
+                Ok(Duration::from_secs(seconds))
+            );
+        }
+        for seconds in [30, 120, 3600] {
+            assert!(idle_timeout_from_seconds(seconds).is_err());
+        }
+    }
+
+    #[test]
+    fn recent_activity_resets_the_inactivity_deadline() {
+        let state = AppState::default();
+        let timeout = Duration::from_secs(300);
+        *state.last_activity.lock().unwrap() = Instant::now() - timeout;
+        assert!(inactivity_elapsed(
+            *state.last_activity.lock().unwrap(),
+            Instant::now(),
+            timeout
+        ));
+
+        touch_activity(&state).unwrap();
+        assert!(!inactivity_elapsed(
+            *state.last_activity.lock().unwrap(),
+            Instant::now(),
+            timeout
+        ));
+    }
+
+    #[test]
+    fn activity_is_recorded_while_an_operation_holds_the_session_mutex() {
+        let state = AppState::default();
+        *state.last_activity.lock().unwrap() = Instant::now() - Duration::from_secs(60);
+        let operation_guard = state.session.lock().unwrap();
+
+        record_activity_state(&state).unwrap();
+
+        assert!(state.last_activity.lock().unwrap().elapsed() < Duration::from_secs(1));
+        drop(operation_guard);
+    }
+
+    #[test]
+    fn idle_lock_happens_only_once_for_a_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with_idle_unlocked_vault(&dir);
+
+        assert_eq!(auto_lock_state(&state), AutoLockOutcome::Locked);
+        assert!(state.session.lock().unwrap().is_none());
+        assert_eq!(auto_lock_state(&state), AutoLockOutcome::NotDue);
+    }
+
+    #[test]
+    fn idle_lock_waits_for_an_operation_holding_the_session_mutex() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = Arc::new(state_with_idle_unlocked_vault(&dir));
+        let operation_guard = state.session.lock().unwrap();
+        let worker_state = Arc::clone(&state);
+        let (started_tx, started_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+
+        let worker = thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            result_tx.send(auto_lock_state(&worker_state)).unwrap();
+        });
+
+        started_rx.recv().unwrap();
+        assert!(result_rx.recv_timeout(Duration::from_millis(100)).is_err());
+        drop(operation_guard);
+
+        assert_eq!(
+            result_rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+            AutoLockOutcome::Locked
+        );
+        worker.join().unwrap();
+        assert!(state.session.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn failed_auto_lock_preserves_session_and_defers_retries() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with_idle_unlocked_vault(&dir);
+        let vault_path = dir.path().join("vault.nqv");
+        std::fs::remove_file(&vault_path).unwrap();
+        std::fs::create_dir(&vault_path).unwrap();
+
+        assert!(matches!(
+            auto_lock_state(&state),
+            AutoLockOutcome::Failed(_)
+        ));
+        assert!(state.session.lock().unwrap().is_some());
+        assert_eq!(auto_lock_state(&state), AutoLockOutcome::NotDue);
+    }
+
+    #[test]
+    fn resume_locks_an_open_session_and_refreshes_activity() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with_idle_unlocked_vault(&dir);
+
+        assert!(resume_session(&state).unwrap());
+        assert!(state.session.lock().unwrap().is_none());
+        assert!(state.last_activity.lock().unwrap().elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn failed_resume_lock_preserves_session_and_inactivity_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with_idle_unlocked_vault(&dir);
+        let previous_activity = *state.last_activity.lock().unwrap();
+        let vault_path = dir.path().join("vault.nqv");
+        std::fs::remove_file(&vault_path).unwrap();
+        std::fs::create_dir(&vault_path).unwrap();
+
+        assert!(resume_session(&state).is_err());
+        assert!(state.session.lock().unwrap().is_some());
+        assert_eq!(*state.last_activity.lock().unwrap(), previous_activity);
+        assert!(state.auto_lock_retry_after.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn manual_and_exit_lock_path_uses_recoverable_session_locking() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("vault.nqv");
+        Vault::create(&vault_path, b"test-password", None).unwrap();
+        let session = Vault::open(&vault_path)
+            .unwrap()
+            .unlock(b"test-password")
+            .unwrap();
+        let state = AppState::default();
+        *state.session.lock().unwrap() = Some(session);
+
+        assert!(lock_session(&state).unwrap());
+        assert!(state.session.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn successful_lock_removes_the_session_from_application_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("vault.nqv");
+        Vault::create(&vault_path, b"test-password", None).unwrap();
+        let session = Vault::open(&vault_path)
+            .unwrap()
+            .unlock(b"test-password")
+            .unwrap();
+
+        let mut slot = Some(session);
+        assert!(lock_session_slot(&mut slot).unwrap());
+        assert!(slot.is_none());
+    }
+
+    #[test]
+    fn failed_lock_keeps_the_session_in_application_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("vault.nqv");
+        Vault::create(&vault_path, b"test-password", None).unwrap();
+        let session = Vault::open(&vault_path)
+            .unwrap()
+            .unlock(b"test-password")
+            .unwrap();
+
+        // Replace the vault file with a directory so the lock write fails.
+        std::fs::remove_file(&vault_path).unwrap();
+        std::fs::create_dir(&vault_path).unwrap();
+
+        let mut slot = Some(session);
+        assert!(lock_session_slot(&mut slot).is_err());
+        assert!(
+            slot.is_some(),
+            "failed locking must not discard the session"
+        );
+    }
+
+    #[test]
+    fn inactivity_deadline_is_inclusive_and_disabled_for_zero() {
+        let now = Instant::now();
+        let last_activity = now - Duration::from_secs(300);
+        assert!(!inactivity_elapsed(
+            last_activity,
+            now,
+            Duration::from_secs(301)
+        ));
+        assert!(inactivity_elapsed(
+            last_activity,
+            now,
+            Duration::from_secs(300)
+        ));
+        assert!(!inactivity_elapsed(last_activity, now, Duration::ZERO));
+    }
 }
 
 #[cfg(test)]
