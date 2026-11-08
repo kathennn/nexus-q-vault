@@ -92,6 +92,14 @@ fn lock_session(state: &AppState) -> Result<bool, String> {
     }
     result
 }
+
+fn resume_session(state: &AppState) -> Result<bool, String> {
+    // A failed resume lock must retain the old inactivity deadline and retry
+    // throttle; treating resume as fresh activity would postpone protection.
+    let locked = lock_session(state)?;
+    touch_activity(state)?;
+    Ok(locked)
+}
 #[derive(Debug, PartialEq, Eq)]
 enum AutoLockOutcome {
     NotDue,
@@ -214,13 +222,15 @@ fn vault_status(state: State<'_, AppState>) -> Result<bool, String> {
         .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
     Ok(guard.is_some())
 }
+fn record_activity_state(state: &AppState) -> Result<(), String> {
+    // Activity must remain observable while a long-running operation holds the
+    // session mutex; auto_lock_state rechecks this timestamp before locking.
+    touch_activity(state)
+}
+
 #[tauri::command]
 fn record_activity(state: State<'_, AppState>) -> Result<(), String> {
-    let _session = state
-        .session
-        .lock()
-        .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
-    touch_activity(&state)
+    record_activity_state(&state)
 }
 #[tauri::command]
 fn set_idle_timeout(state: State<'_, AppState>, seconds: u64) -> Result<(), String> {
@@ -614,7 +624,7 @@ fn main() {
             }
             RunEvent::Resumed => {
                 let state = app.state::<AppState>();
-                match lock_session(&state) {
+                match resume_session(&state) {
                     Ok(true) => {
                         let _ = app.emit("vault-auto-locked", "system-resume");
                     }
@@ -623,7 +633,6 @@ fn main() {
                         let _ = app.emit("vault-lock-failed", error);
                     }
                 }
-                let _ = touch_activity(&state);
             }
             RunEvent::Exit => app
                 .state::<AppState>()
@@ -637,7 +646,7 @@ fn main() {
 mod idle_lock_tests {
     use super::{
         AppState, AutoLockOutcome, auto_lock_state, idle_timeout_from_seconds, inactivity_elapsed,
-        lock_session_slot, touch_activity,
+        lock_session, lock_session_slot, record_activity_state, resume_session, touch_activity,
     };
     use nexusq_core::vault::Vault;
     use std::{
@@ -694,6 +703,18 @@ mod idle_lock_tests {
     }
 
     #[test]
+    fn activity_is_recorded_while_an_operation_holds_the_session_mutex() {
+        let state = AppState::default();
+        *state.last_activity.lock().unwrap() = Instant::now() - Duration::from_secs(60);
+        let operation_guard = state.session.lock().unwrap();
+
+        record_activity_state(&state).unwrap();
+
+        assert!(state.last_activity.lock().unwrap().elapsed() < Duration::from_secs(1));
+        drop(operation_guard);
+    }
+
+    #[test]
     fn idle_lock_happens_only_once_for_a_session() {
         let dir = tempfile::tempdir().unwrap();
         let state = state_with_idle_unlocked_vault(&dir);
@@ -743,6 +764,47 @@ mod idle_lock_tests {
         ));
         assert!(state.session.lock().unwrap().is_some());
         assert_eq!(auto_lock_state(&state), AutoLockOutcome::NotDue);
+    }
+
+    #[test]
+    fn resume_locks_an_open_session_and_refreshes_activity() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with_idle_unlocked_vault(&dir);
+
+        assert!(resume_session(&state).unwrap());
+        assert!(state.session.lock().unwrap().is_none());
+        assert!(state.last_activity.lock().unwrap().elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn failed_resume_lock_preserves_session_and_inactivity_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with_idle_unlocked_vault(&dir);
+        let previous_activity = *state.last_activity.lock().unwrap();
+        let vault_path = dir.path().join("vault.nqv");
+        std::fs::remove_file(&vault_path).unwrap();
+        std::fs::create_dir(&vault_path).unwrap();
+
+        assert!(resume_session(&state).is_err());
+        assert!(state.session.lock().unwrap().is_some());
+        assert_eq!(*state.last_activity.lock().unwrap(), previous_activity);
+        assert!(state.auto_lock_retry_after.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn manual_and_exit_lock_path_uses_recoverable_session_locking() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("vault.nqv");
+        Vault::create(&vault_path, b"test-password", None).unwrap();
+        let session = Vault::open(&vault_path)
+            .unwrap()
+            .unlock(b"test-password")
+            .unwrap();
+        let state = AppState::default();
+        *state.session.lock().unwrap() = Some(session);
+
+        assert!(lock_session(&state).unwrap());
+        assert!(state.session.lock().unwrap().is_none());
     }
 
     #[test]

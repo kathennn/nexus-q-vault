@@ -31,7 +31,7 @@ jobs:
       - name: Check out pinned NEXUS-Q cryptographic engine
         run: |
           git clone --filter=blob:none --no-checkout https://github.com/lecodev-26/nexus-q.git ../nexus-q
-          git -C ../nexus-q checkout efe486603af266c379131526d8320a0584254ce4
+          git -C ../nexus-q checkout 0f791cfcd4f97206b4d183c4f28e2bfcbd2f3ff6
 
       - name: Check formatting
         run: |
@@ -82,7 +82,7 @@ jobs:
         shell: bash
         run: |
           git clone --filter=blob:none --no-checkout https://github.com/lecodev-26/nexus-q.git ../nexus-q
-          git -C ../nexus-q checkout efe486603af266c379131526d8320a0584254ce4
+          git -C ../nexus-q checkout 0f791cfcd4f97206b4d183c4f28e2bfcbd2f3ff6
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version '^2.0.0' --locked
