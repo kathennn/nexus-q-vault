@@ -22,7 +22,7 @@ A new receiving identity means a new contact card and fingerprint. Old active/ro
 
 - One file and one recipient per package; plaintext limit 32 MiB, package overhead allowance 16 KiB.
 - Empty files are supported. Inputs are bounded; symlink inputs are rejected.
-- Output is atomically published without overwriting existing destinations. Originals are never modified.
+- Output is atomically published without overwriting existing destinations. Originals are never modified. Temporary output files are created with owner-only permissions on Unix and a protected owner-only DACL on Windows before plaintext is written. A crash can still leave an owner-readable temporary file; secure erasure is not guaranteed.
 - Malformed, truncated, unsupported-version/mode, wrong-recipient and tampered packages are rejected by Core.
 - Successful decryption proves only that the selected receiving key opened the package and the AEAD tag was valid. It does not identify the sender.
 - No server, sender signature, replay prevention, delivery receipt, multi-recipient support or forward secrecy against later compromise of the recipient's long-term key.
@@ -30,4 +30,4 @@ A new receiving identity means a new contact card and fingerprint. Old active/ro
 
 ## Review required before stabilization
 
-Independently review the fingerprint construction and verification UX, Core envelope reuse, key lifecycle and backup behavior, metadata visibility, filesystem race/atomic-write behavior, key rotation/revocation and cross-platform support. This draft is not a security certification.
+Independently review the fingerprint construction and verification UX, Core envelope reuse, key lifecycle and backup behavior, metadata visibility, filesystem race/atomic-write behavior, key rotation/revocation and cross-platform support. Receiving-identity creation still lacks a Core transaction/rollback API: failures after identity creation can leave an incomplete identity or inactive key in the unlocked session. Add transactional Core support and failure-injection coverage before treating identity creation as production-ready. This draft is not a security certification.

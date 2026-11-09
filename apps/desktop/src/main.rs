@@ -546,15 +546,17 @@ fn create_receiving_identity(
     }
     let mut guard = active_session(&state)?;
     let session = guard.as_mut().expect("active_session checked");
-    let identity_id = session
-        .create_identity(Some(label))
-        .map_err(|error| format!("Could not create the receiving identity: {error}"))?;
+    // Generate the key before creating the identity so a key-generation
+    // failure cannot leave an empty receiving identity behind. Keep the key
+    // inactive until its owner and identity reference have both been set.
     let key_id = session
         .generate_key(Algorithm::MlKem768, Purpose::KeyAgreement)
+        .map_err(|error| format!("Could not generate the receiving key: {error}"))?;
+    let identity_id = session
+        .create_identity(Some(label))
         .map_err(|error| {
             format!(
-                "Identity {} was created, but its receiving key could not be generated: {error}",
-                identity_id
+                "The receiving key was generated but the identity could not be created: {error}"
             )
         })?;
     {
@@ -564,19 +566,19 @@ fn create_receiving_identity(
             .ok_or_else(|| "The newly generated receiving key could not be found".to_string())?;
         key.metadata.owner = Some(identity_id.to_string());
     }
-    session
-        .activate_key(&key_id)
-        .map_err(|error| format!("Could not activate the receiving key: {error}"))?;
     {
         let identity = session
             .find_identity_mut(&identity_id)
             .map_err(|error| format!("Could not update the receiving identity: {error}"))?
             .ok_or_else(|| "The new receiving identity could not be found".to_string())?;
-        identity.key_agreement_key = Some(key_id);
+        identity.key_agreement_key = Some(key_id.clone());
         identity
             .validate()
             .map_err(|error| format!("The receiving identity is invalid: {error}"))?;
     }
+    session
+        .activate_key(&key_id)
+        .map_err(|error| format!("Could not activate the receiving key: {error}"))?;
     let card = contact_card_for_identity(session, &identity_id)?;
     touch_activity(&state)?;
     Ok(card)

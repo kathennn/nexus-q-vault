@@ -119,21 +119,42 @@ pub fn read_bounded_file(
     description: &str,
 ) -> Result<Zeroizing<Vec<u8>>, String> {
     let path = path.as_ref();
-    let path_metadata = fs::symlink_metadata(path)
-        .map_err(|error| format!("Could not inspect the {description}: {error}"))?;
-    if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
+    // Open without following links/reparse points, then validate the opened
+    // handle. Checking the path before File::open would leave a TOCTOU window
+    // in which an attacker could replace a regular file with a symlink.
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_FLAG_OPEN_REPARSE_POINT: open the reparse point itself so the
+        // handle metadata check below can reject symlinks and other reparse points.
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let mut file = options
+        .open(path)
+        .map_err(|error| format!("Could not safely open the {description}: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("Could not inspect the opened {description}: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(format!(
-            "The {description} must be a regular file, not a symbolic link"
+            "The {description} must be a regular file, not a symbolic link or reparse point"
         ));
     }
-    if path_metadata.len() > max_bytes {
+    if metadata.len() > max_bytes {
         return Err(format!(
             "The {description} exceeds the supported size limit"
         ));
     }
-    let mut file =
-        File::open(path).map_err(|error| format!("Could not open the {description}: {error}"))?;
-    let mut bytes = Zeroizing::new(Vec::with_capacity(path_metadata.len() as usize));
+    let capacity = usize::try_from(metadata.len()).unwrap_or(0);
+    let mut bytes = Zeroizing::new(Vec::with_capacity(capacity));
     Read::by_ref(&mut file)
         .take(max_bytes.saturating_add(1))
         .read_to_end(bytes.as_mut())
@@ -181,6 +202,98 @@ pub fn write_new_atomic(path: impl AsRef<Path>, bytes: &[u8]) -> Result<(), Stri
     })
 }
 
+#[cfg(windows)]
+fn create_private_temp_file(path: &Path) -> std::io::Result<File> {
+    use std::{
+        ffi::c_void,
+        os::windows::{ffi::OsStrExt, io::FromRawHandle},
+        ptr,
+    };
+
+    #[repr(C)]
+    struct SecurityAttributes {
+        length: u32,
+        security_descriptor: *mut c_void,
+        inherit_handle: i32,
+    }
+
+    #[link(name = "advapi32")]
+    unsafe extern "system" {
+        fn ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            descriptor: *const u16,
+            revision: u32,
+            output: *mut *mut c_void,
+            size: *mut u32,
+        ) -> i32;
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn CreateFileW(
+            filename: *const u16,
+            desired_access: u32,
+            share_mode: u32,
+            security_attributes: *mut SecurityAttributes,
+            creation_disposition: u32,
+            flags_and_attributes: u32,
+            template_file: isize,
+        ) -> isize;
+        fn LocalFree(memory: *mut c_void) -> *mut c_void;
+    }
+
+    // Protected DACL: grant full access only to the file owner. The descriptor
+    // is applied atomically by CreateFileW, before any plaintext is written.
+    let sddl: Vec<u16> = "D:P(A;;FA;;;OW)\0".encode_utf16().collect();
+    let mut descriptor = ptr::null_mut();
+    let converted = unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl.as_ptr(),
+            1,
+            &mut descriptor,
+            ptr::null_mut(),
+        )
+    };
+    if converted == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let mut attributes = SecurityAttributes {
+        length: std::mem::size_of::<SecurityAttributes>() as u32,
+        security_descriptor: descriptor,
+        inherit_handle: 0,
+    };
+    let filename: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let handle = unsafe {
+        CreateFileW(
+            filename.as_ptr(),
+            0x4000_0000, // GENERIC_WRITE
+            0,            // no sharing while the private file is being populated
+            &mut attributes,
+            1,   // CREATE_NEW
+            0x80, // FILE_ATTRIBUTE_NORMAL
+            0,
+        )
+    };
+    unsafe {
+        LocalFree(descriptor);
+    }
+    if handle == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(unsafe { File::from_raw_handle(handle as _) })
+}
+
+#[cfg(not(windows))]
+fn create_private_temp_file(path: &Path) -> std::io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.open(path)
+}
+
 fn write_new_atomic_with(
     path: &Path,
     bytes: &[u8],
@@ -201,14 +314,7 @@ fn write_new_atomic_with(
         let mut temp_name = file_name.to_os_string();
         temp_name.push(format!(".tmp-{}-{timestamp}-{counter}", std::process::id()));
         let temp_path = parent.join(temp_name);
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = match options.open(&temp_path) {
+        let mut file = match create_private_temp_file(&temp_path) {
             Ok(file) => file,
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => return Err(format!("Could not create temporary output: {error}")),
