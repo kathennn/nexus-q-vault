@@ -4,7 +4,9 @@
 //! the pinned nexusq-core session. The on-disk object name is an opaque KeyId;
 //! this module does not implement cryptography or filesystem publication.
 use nexusq_core::crypto::random::OsRandomSource;
-use nexusq_core::vault::{Envelope, KeyId, Session, serde_helpers};
+use nexusq_core::vault::{
+    Envelope, KeyId, OperationControl, OperationPhase, OperationProgress, Session, serde_helpers,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::io;
@@ -296,10 +298,18 @@ pub fn encrypt_folder(
         Ok(manifest.entries.len())
     })();
 
-    if result.is_err() {
-        let _ = std::fs::remove_dir_all(vault_dir);
+    match result {
+        Err(original) => match std::fs::remove_dir_all(vault_dir) {
+            Ok(()) => Err(Box::new(io::Error::other(format!(
+                "{original}; partial folder-vault output was removed"
+            )))),
+            Err(cleanup) if cleanup.kind() == io::ErrorKind::NotFound => Err(original),
+            Err(cleanup) => Err(Box::new(io::Error::other(format!(
+                "{original}; partial folder-vault cleanup failed: {cleanup}"
+            )))),
+        },
+        Ok(count) => Ok(count),
     }
-    result
 }
 
 /// Restore a folder vault into a new destination directory.
@@ -359,8 +369,251 @@ pub fn decrypt_folder(
         Ok(manifest.entries.len())
     })();
 
+    match result {
+        Err(original) => match std::fs::remove_dir_all(destination_dir) {
+            Ok(()) => Err(Box::new(io::Error::other(format!(
+                "{original}; partial restored output was removed"
+            )))),
+            Err(cleanup) if cleanup.kind() == io::ErrorKind::NotFound => Err(original),
+            Err(cleanup) => Err(Box::new(io::Error::other(format!(
+                "{original}; partial restore cleanup failed: {cleanup}"
+            )))),
+        },
+        Ok(count) => Ok(count),
+    }
+}
+
+/// Encrypt a folder with cooperative cancellation and item-level progress.
+/// Cancellation removes the incomplete destination tree; source files remain untouched.
+pub fn encrypt_folder_controlled(
+    session: &Session,
+    key_id: &KeyId,
+    source_dir: &std::path::Path,
+    vault_dir: &std::path::Path,
+    control: &OperationControl,
+    progress: &mut dyn FnMut(OperationProgress),
+) -> ManifestResult<usize> {
+    control.check_cancelled()?;
+    let source = source_dir.canonicalize()?;
+    if !source.is_dir() {
+        return Err(invalid("source path is not a directory"));
+    }
+    create_private_dir(vault_dir)?;
+    let result = (|| {
+        let vault_root = vault_dir.canonicalize()?;
+        if vault_root.starts_with(&source) {
+            return Err(invalid("folder vault cannot be created inside its source"));
+        }
+        let objects_dir = vault_root.join("objects");
+        create_private_dir(&objects_dir)?;
+        let mut files = Vec::new();
+        let mut visited_entries = 0;
+        collect_regular_files(&source, &mut files, 0, &mut visited_entries)?;
+        if files.len() > MAX_MANIFEST_ENTRIES {
+            return Err(invalid("folder contains too many files"));
+        }
+        let total = files.len() as u64;
+        progress(OperationProgress::measured(
+            OperationPhase::Processing,
+            0,
+            total,
+        ));
+        let mut manifest = FolderManifest::new();
+        for (index, file) in files.iter().enumerate() {
+            control.check_cancelled()?;
+            let relative = file.strip_prefix(&source)?;
+            let relative_path = Zeroizing::new(
+                relative
+                    .to_str()
+                    .ok_or_else(|| invalid("non-UTF-8 file paths are not supported"))?
+                    .replace(std::path::MAIN_SEPARATOR, "/"),
+            );
+            let metadata = std::fs::metadata(file)?;
+            if metadata.len() > MAX_FILE_BYTES {
+                return Err(invalid("file exceeds the current 32 MiB in-memory limit"));
+            }
+            let plaintext = Zeroizing::new(std::fs::read(file)?);
+            if plaintext.len() as u64 > MAX_FILE_BYTES || plaintext.len() as u64 != metadata.len() {
+                return Err(invalid(
+                    "file changed while it was being encrypted or exceeds the size limit",
+                ));
+            }
+            let object_id = manifest.add_file(&relative_path, plaintext.len() as u64)?;
+            let envelope = session.encrypt(key_id, &plaintext, object_metadata(&object_id))?;
+            control.check_cancelled()?;
+            let object_path = objects_dir.join(format!("{object_id}.nqx"));
+            write_new_atomic_controlled(&object_path, &envelope, control)?;
+            progress(OperationProgress::measured(
+                OperationPhase::Processing,
+                (index + 1) as u64,
+                total,
+            ));
+        }
+        control.check_cancelled()?;
+        progress(OperationProgress::phase(OperationPhase::WritingOutput));
+        let sealed_manifest = manifest.seal(session, key_id)?;
+        write_new_atomic_controlled(&vault_root.join("manifest.nqm"), &sealed_manifest, control)?;
+        progress(OperationProgress::phase(OperationPhase::Completed));
+        Ok(manifest.entries.len())
+    })();
+    match result {
+        Err(original) => match std::fs::remove_dir_all(vault_dir) {
+            Ok(()) => Err(original),
+            Err(cleanup) if cleanup.kind() == io::ErrorKind::NotFound => Err(original),
+            Err(cleanup) => Err(Box::new(io::Error::other(format!(
+                "{original}; partial folder-vault cleanup failed: {cleanup}"
+            )))),
+        },
+        Ok(count) => Ok(count),
+    }
+}
+
+/// Restore a folder vault with cooperative cancellation and item-level progress.
+/// Cancellation removes the incomplete destination tree and never changes encrypted inputs.
+pub fn decrypt_folder_controlled(
+    session: &Session,
+    vault_dir: &std::path::Path,
+    destination_dir: &std::path::Path,
+    control: &OperationControl,
+    progress: &mut dyn FnMut(OperationProgress),
+) -> ManifestResult<usize> {
+    control.check_cancelled()?;
+    let vault_root = vault_dir.canonicalize()?;
+    let manifest_path = vault_root.join("manifest.nqm");
+    let manifest_metadata = std::fs::symlink_metadata(&manifest_path)?;
+    if manifest_metadata.file_type().is_symlink() || !manifest_metadata.is_file() {
+        return Err(invalid("folder manifest must be a regular file"));
+    }
+    if manifest_metadata.len() > (MAX_MANIFEST_BYTES + 64 * 1024) as u64 {
+        return Err(invalid("manifest envelope exceeds maximum size"));
+    }
+    let envelope = std::fs::read(&manifest_path)?;
+    let manifest = FolderManifest::open(session, &envelope)?;
+    control.check_cancelled()?;
+    create_private_dir(destination_dir)?;
+    let result = (|| {
+        let destination = destination_dir.canonicalize()?;
+        let objects_dir = vault_root.join("objects");
+        let objects_metadata = std::fs::symlink_metadata(&objects_dir)?;
+        if objects_metadata.file_type().is_symlink() || !objects_metadata.is_dir() {
+            return Err(invalid("folder objects path must be a real directory"));
+        }
+        let total = manifest.entries.len() as u64;
+        progress(OperationProgress::measured(
+            OperationPhase::Processing,
+            0,
+            total,
+        ));
+        for (index, entry) in manifest.entries.iter().enumerate() {
+            control.check_cancelled()?;
+            validate_relative_path(&entry.relative_path)?;
+            let object_path = objects_dir.join(format!("{}.nqx", entry.object_id));
+            let object_metadata = std::fs::symlink_metadata(&object_path)?;
+            if object_metadata.file_type().is_symlink() || !object_metadata.is_file() {
+                return Err(invalid("encrypted object must be a regular file"));
+            }
+            if object_metadata.len() > MAX_FILE_BYTES + 1024 * 1024 {
+                return Err(invalid("encrypted file exceeds maximum size"));
+            }
+            let encrypted = std::fs::read(&object_path)?;
+            let plaintext = decrypt_object(session, &entry.object_id, &encrypted)?;
+            if plaintext.len() as u64 != entry.plaintext_size {
+                return Err(invalid("decrypted file size does not match the manifest"));
+            }
+            let output = destination.join(std::path::Path::new(&entry.relative_path));
+            let parent = output
+                .parent()
+                .ok_or_else(|| invalid("invalid output path"))?;
+            create_private_dir_all(&destination, parent)?;
+            write_new_atomic_controlled(&output, plaintext.as_slice(), control)?;
+            progress(OperationProgress::measured(
+                OperationPhase::Processing,
+                (index + 1) as u64,
+                total,
+            ));
+        }
+        progress(OperationProgress::phase(OperationPhase::Completed));
+        Ok(manifest.entries.len())
+    })();
+    match result {
+        Err(original) => match std::fs::remove_dir_all(destination_dir) {
+            Ok(()) => Err(original),
+            Err(cleanup) if cleanup.kind() == io::ErrorKind::NotFound => Err(original),
+            Err(cleanup) => Err(Box::new(io::Error::other(format!(
+                "{original}; partial restore cleanup failed: {cleanup}"
+            )))),
+        },
+        Ok(count) => Ok(count),
+    }
+}
+
+fn write_new_atomic_controlled(
+    path: &std::path::Path,
+    bytes: &[u8],
+    control: &OperationControl,
+) -> ManifestResult<()> {
+    use std::io::Write;
+    control.check_cancelled()?;
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let file_name = path.file_name().unwrap_or_default();
+    let (temp_path, mut file) = loop {
+        let suffix = KeyId::generate(&OsRandomSource::new(), "tmp")?;
+        let mut name = file_name.to_os_string();
+        name.push(format!(".{suffix}.tmp"));
+        let candidate = parent.join(name);
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&candidate) {
+            Ok(file) => break (candidate, file),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(Box::new(error)),
+        }
+    };
+    let mut published = false;
+    let result = (|| -> ManifestResult<()> {
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        control.check_cancelled()?;
+        std::fs::hard_link(&temp_path, path)?;
+        published = true;
+        std::fs::remove_file(&temp_path)?;
+        #[cfg(unix)]
+        {
+            let directory = std::fs::File::open(parent)?;
+            directory.sync_all()?;
+        }
+        Ok(())
+    })();
     if result.is_err() {
-        let _ = std::fs::remove_dir_all(destination_dir);
+        let mut cleanup_errors = Vec::new();
+        if published
+            && let Err(error) = std::fs::remove_file(path)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            cleanup_errors.push(error.to_string());
+        }
+        if let Err(error) = std::fs::remove_file(&temp_path)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            cleanup_errors.push(error.to_string());
+        }
+        if !cleanup_errors.is_empty() {
+            return Err(Box::new(io::Error::other(format!(
+                "folder operation failed and partial-file cleanup failed: {}",
+                cleanup_errors.join("; ")
+            ))));
+        }
+    } else {
+        let _ = std::fs::remove_file(&temp_path);
     }
     result
 }
@@ -502,6 +755,67 @@ mod tests {
             .unwrap();
         session.activate_key(&key_id).unwrap();
         (session, key_id)
+    }
+
+    #[test]
+    fn controlled_folder_cancellation_removes_partial_output_and_preserves_sources() {
+        let dir = tempdir().unwrap();
+        let (session, key_id) = unlocked_session(dir.path());
+        let source = dir.path().join("controlled-source");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("a.txt"), b"first file").unwrap();
+        std::fs::write(source.join("b.txt"), b"second file").unwrap();
+        let destination = dir.path().join("cancelled-vault");
+        let control = OperationControl::new();
+        let mut reporter = |update: OperationProgress| {
+            if update.phase == OperationPhase::Processing && update.completed == Some(1) {
+                control.cancel();
+            }
+        };
+        let result = encrypt_folder_controlled(
+            &session,
+            &key_id,
+            &source,
+            &destination,
+            &control,
+            &mut reporter,
+        );
+        assert!(result.is_err());
+        assert!(!destination.exists());
+        assert_eq!(std::fs::read(source.join("a.txt")).unwrap(), b"first file");
+        assert_eq!(std::fs::read(source.join("b.txt")).unwrap(), b"second file");
+    }
+
+    #[test]
+    fn controlled_folder_restore_cancellation_removes_partial_restore() {
+        let dir = tempdir().unwrap();
+        let (session, key_id) = unlocked_session(dir.path());
+        let source = dir.path().join("restore-source");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("a.txt"), b"first file").unwrap();
+        std::fs::write(source.join("b.txt"), b"second file").unwrap();
+        let vault_dir = dir.path().join("restore-vault");
+        encrypt_folder_controlled(
+            &session,
+            &key_id,
+            &source,
+            &vault_dir,
+            &OperationControl::new(),
+            &mut |_| {},
+        )
+        .unwrap();
+        let restored = dir.path().join("cancelled-restore");
+        let control = OperationControl::new();
+        let mut reporter = |update: OperationProgress| {
+            if update.phase == OperationPhase::Processing && update.completed == Some(1) {
+                control.cancel();
+            }
+        };
+        let result =
+            decrypt_folder_controlled(&session, &vault_dir, &restored, &control, &mut reporter);
+        assert!(result.is_err());
+        assert!(!restored.exists());
+        assert!(vault_dir.join("manifest.nqm").exists());
     }
 
     #[test]

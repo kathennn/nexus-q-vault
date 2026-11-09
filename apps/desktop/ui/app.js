@@ -4,6 +4,117 @@ const feedback = $("feedback");
 const statusLabel = $("vault-status");
 const statusDot = $("status-dot");
 const lockButton = $("lock-button");
+let vaultUnlocked = false;
+const operationList = $("operation-list");
+const operationCards = new Map();
+const trackedCommands = new Set(["encrypt_file", "decrypt_file", "encrypt_folder", "decrypt_folder", "export_backup", "import_backup"]);
+const operationTitles = {
+  encrypt_file: "Encrypting file", decrypt_file: "Restoring file",
+  encrypt_folder: "Encrypting folder", decrypt_folder: "Restoring folder",
+  export_backup: "Creating key backup", import_backup: "Restoring key backup",
+};
+const operationContexts = {
+  encrypt_file: "Source file → encrypted .nqx output",
+  decrypt_file: "Encrypted .nqx input → restored file",
+  encrypt_folder: "Source folder → encrypted folder vault",
+  decrypt_folder: "Folder vault → restored folder",
+  export_backup: "Vault state and keys → .nqb backup",
+  import_backup: ".nqb backup → new vault",
+};
+const phaseTitles = {
+  preparing: "Preparing", readingInput: "Reading input", processing: "Processing",
+  writingOutput: "Writing output", verifying: "Verifying", completed: "Completed",
+};
+function createOperationCard(operationId, command) {
+  if (!operationList) return;
+  const empty = operationList.querySelector(".operation-empty");
+  if (empty) empty.remove();
+  const item = document.createElement("article");
+  item.className = "operation-item";
+  const title = document.createElement("span");
+  title.className = "operation-item-title";
+  title.textContent = operationTitles[command] || "Vault operation";
+  const context = document.createElement("span");
+  context.className = "operation-item-context";
+  context.textContent = operationContexts[command] || "Local vault operation";
+  const status = document.createElement("span");
+  status.className = "operation-item-status";
+  status.setAttribute("aria-live", "polite");
+  status.dataset.state = "queued";
+  status.textContent = preference("language", "en") === "es" ? "En cola" : "Queued";
+  const phase = document.createElement("span");
+  phase.className = "operation-item-phase";
+  phase.textContent = "";
+  const progress = document.createElement("progress");
+  progress.removeAttribute("value");
+  progress.max = 100;
+  progress.setAttribute("aria-label", "Operation progress");
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = preference("language", "en") === "es" ? "Cancelar" : "Cancel";
+  cancel.addEventListener("click", async () => {
+    cancel.disabled = true;
+    cancel.textContent = preference("language", "en") === "es" ? "Solicitando…" : "Requesting…";
+    try {
+      const accepted = await invoke("cancel_operation", { operationId });
+      if (!accepted) cancel.hidden = true;
+    } catch (error) {
+      cancel.disabled = false;
+      cancel.textContent = preference("language", "en") === "es" ? "Cancelar" : "Cancel";
+      showMessage(String(error), true);
+    }
+  });
+  item.append(title, status, context, phase, progress, cancel);
+  operationList.prepend(item);
+  operationCards.set(operationId, { item, status, phase, progress, cancel });
+  refreshLockButtonAvailability();
+  while (operationList.children.length > 8) {
+    const stale = [...operationCards.entries()].find(([, card]) =>
+      ["completed", "failed", "cancelled"].includes(card.status.dataset.state));
+    if (!stale) break;
+    stale[1].item.remove();
+    operationCards.delete(stale[0]);
+  }
+}
+function updateOperationCard(payload) {
+  const card = operationCards.get(payload.operationId);
+  if (!card) return;
+  const language = preference("language", "en");
+  const states = language === "es"
+    ? { queued: "En cola", running: "En curso", cancelling: "Cancelando", completed: "Completada", failed: "Error", cancelled: "Cancelada" }
+    : { queued: "Queued", running: "Running", cancelling: "Cancelling", completed: "Completed", failed: "Failed", cancelled: "Cancelled" };
+  const currentStatus = card.status.dataset.state;
+  const preserveCancellation = currentStatus === "cancelling" && payload.status === "running";
+  if (!preserveCancellation) {
+    card.status.textContent = states[payload.status] || payload.status;
+    card.status.dataset.state = payload.status;
+  }
+  refreshLockButtonAvailability();
+  if (payload.phase) {
+    const phase = phaseTitles[payload.phase] || payload.phase;
+    card.phase.textContent = language === "es" ? ({ Preparing: "Preparando", "Reading input": "Leyendo entrada", Processing: "Procesando", "Writing output": "Escribiendo resultado", Verifying: "Verificando", Completed: "Completado" }[phase] || phase) : phase;
+  }
+  if (Number.isFinite(payload.completed) && Number.isFinite(payload.total) && payload.total > 0) {
+    card.progress.max = payload.total;
+    card.progress.value = Math.min(payload.completed, payload.total);
+  } else if (payload.status === "running" && payload.phase !== "completed") {
+    card.progress.removeAttribute("value");
+  }
+  if (["cancelling", "completed", "failed", "cancelled"].includes(payload.status)) {
+    card.cancel.hidden = true;
+    card.cancel.disabled = true;
+  }
+  if (["completed", "failed", "cancelled"].includes(payload.status)) {
+    if (!card.progress.hasAttribute("value")) card.progress.hidden = true;
+    if (payload.message) {
+      const message = language === "es" ? (translations[payload.message] || payload.message) : payload.message;
+      card.phase.textContent = message;
+      if (payload.status === "failed") showMessage(message, true);
+    }
+  }
+}
+window.__TAURI__.event.listen("operation-update", (event) => updateOperationCard(event.payload))
+  .catch((error) => showMessage(String(error), true));
 
 function showMessage(message, isError = false) {
   feedback.hidden = false;
@@ -52,12 +163,19 @@ function bindSecretToggle(buttonId, inputId) {
   });
 }
 
+function refreshLockButtonAvailability() {
+  const hasActiveOperations = [...operationCards.values()].some(({ status }) =>
+    status.dataset.state === "queued" || status.dataset.state === "running" || status.dataset.state === "cancelling");
+  lockButton.disabled = !vaultUnlocked || hasActiveOperations;
+}
+
 async function refreshStatus() {
   try {
     const unlocked = await invoke("vault_status");
+    vaultUnlocked = unlocked;
     statusLabel.textContent = preference("language", "en") === "es" ? (unlocked ? "Desbloqueado" : "Bloqueado") : (unlocked ? "Unlocked" : "Locked");
     statusDot.classList.toggle("active", unlocked);
-    lockButton.disabled = !unlocked;
+    refreshLockButtonAvailability();
     document.querySelectorAll(".workspace input,.workspace button[type=submit],.workspace .picker,.workspace .reveal")
       .forEach((el) => { el.disabled = !unlocked; });
   } catch (error) {
@@ -67,6 +185,7 @@ async function refreshStatus() {
 
 function submit(formId, command, fields) {
   const form = $(formId);
+  let submittedOperationId = null;
   form.querySelectorAll("[data-confirm-for]").forEach((confirmation) => {
     const password = $(confirmation.dataset.confirmFor);
     [password, confirmation].forEach((input) => {
@@ -88,7 +207,16 @@ function submit(formId, command, fields) {
       input.focus();
       showMessage(message, true);
     },
-    onMatch: () => invoke(command, Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]))),
+    onMatch: () => {
+      const payload = Object.fromEntries(fields.map(([key, id]) => [key, $(id).value]));
+      if (trackedCommands.has(command)) {
+        const operationId = crypto.randomUUID();
+        submittedOperationId = operationId;
+        createOperationCard(operationId, command);
+        return invoke(command, { ...payload, operationId });
+      }
+      return invoke(command, payload);
+    },
   });
   form.addEventListener("submit", async (event) => {
     const validation = handleConfirmedSubmit(event);
@@ -104,6 +232,12 @@ function submit(formId, command, fields) {
     try {
       showMessage(await validation.result);
     } catch (error) {
+      if (submittedOperationId) {
+        const card = operationCards.get(submittedOperationId);
+        if (card && ["queued", "running"].includes(card.status.dataset.state)) {
+          updateOperationCard({ operationId: submittedOperationId, status: "failed" });
+        }
+      }
       showMessage(String(error), true);
     } finally {
       clearSecrets(form);
@@ -288,6 +422,26 @@ Object.assign(translations, {
   "30 minutes": "30 minutos",
   "The countdown is enforced by the Rust backend. Closing the app also locks the vault. Desktop operating systems do not expose a portable screen-lock or suspend event through Tauri.": "La cuenta atrás la controla Rust. Cerrar la aplicación también bloquea el vault. Los sistemas de escritorio no exponen mediante Tauri un evento portable de bloqueo de pantalla o suspensión."
 });
+Object.assign(translations, {
+  "Operations center": "Centro de operaciones",
+  "Backend-reported progress; safe cancellation where supported.": "Progreso comunicado por el motor; cancelación segura cuando está disponible.",
+  "No operations yet.": "Todavía no hay operaciones.",
+  "Encrypting file": "Cifrando archivo", "Restoring file": "Restaurando archivo",
+  "Encrypting folder": "Cifrando carpeta", "Restoring folder": "Restaurando carpeta",
+  "Creating key backup": "Creando backup de claves", "Restoring key backup": "Restaurando backup de claves",
+  "Source file → encrypted .nqx output": "Archivo original → archivo cifrado .nqx",
+  "Encrypted .nqx input → restored file": "Archivo .nqx cifrado → archivo restaurado",
+  "Source folder → encrypted folder vault": "Carpeta original → vault de carpeta cifrado",
+  "Folder vault → restored folder": "Vault de carpeta → carpeta restaurada",
+  "Vault state and keys → .nqb backup": "Estado y claves del vault → backup .nqb",
+  ".nqb backup → new vault": "Backup .nqb → vault nuevo",
+  "Queued": "En cola", "Running": "En curso", "Cancelling": "Cancelando", "Completed": "Completada", "Failed": "Error", "Cancelled": "Cancelada",
+  "Preparing": "Preparando", "Reading input": "Leyendo entrada", "Processing": "Procesando",
+  "Writing output": "Escribiendo resultado", "Verifying": "Verificando", "Cancel": "Cancelar",
+  "Cancellation completed at a safe checkpoint; incomplete output was removed or never published.": "Cancelación completada en un punto seguro; el resultado incompleto se eliminó o no llegó a publicarse.",
+  "Operation failed. Cleanup was attempted where needed; see the form feedback for details.": "La operación falló. Se intentó limpiar los resultados cuando correspondía; consulta el mensaje del formulario."
+});
+
 const themeToggle = $("theme-toggle");
 function translatePage(language) {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);

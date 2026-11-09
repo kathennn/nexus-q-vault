@@ -1,13 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use nexus_q_vault_spike::folder_manifest::{
-    decrypt_folder as decrypt_folder_from_vault, encrypt_folder as encrypt_folder_to_vault,
-};
 use nexusq_core::{
     storage::backup,
-    vault::{Algorithm, KeyId, KeyStatus, Purpose, Session, Vault},
+    vault::{
+        Algorithm, KeyId, KeyStatus, OperationControl, OperationPhase, OperationProgress, Purpose,
+        Session, Vault,
+    },
 };
 use std::{
+    collections::HashMap,
     sync::{
         Mutex,
         atomic::{AtomicBool, Ordering},
@@ -25,6 +26,7 @@ struct AppState {
     idle_timeout: Mutex<Duration>,
     auto_lock_retry_after: Mutex<Option<Instant>>,
     watchdog_stop: AtomicBool,
+    operations: Mutex<HashMap<String, OperationControl>>,
 }
 impl Default for AppState {
     fn default() -> Self {
@@ -34,6 +36,7 @@ impl Default for AppState {
             idle_timeout: Mutex::new(Duration::from_secs(300)),
             auto_lock_retry_after: Mutex::new(None),
             watchdog_stop: AtomicBool::new(false),
+            operations: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -214,8 +217,108 @@ fn active_file_key(session: &Session) -> Result<KeyId, String> {
         .ok_or_else(|| "El vault no tiene una clave activa para cifrar".to_string())
 }
 
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OperationEvent {
+    operation_id: String,
+    status: String,
+    phase: Option<OperationPhase>,
+    completed: Option<u64>,
+    total: Option<u64>,
+    message: Option<String>,
+}
+
+fn emit_operation_event(
+    app: &AppHandle,
+    operation_id: &str,
+    status: &str,
+    progress: Option<OperationProgress>,
+    message: Option<String>,
+) {
+    let event = OperationEvent {
+        operation_id: operation_id.to_owned(),
+        status: status.to_owned(),
+        phase: progress.map(|item| item.phase),
+        completed: progress.and_then(|item| item.completed),
+        total: progress.and_then(|item| item.total),
+        message,
+    };
+    let _ = app.emit("operation-update", event);
+}
+
+fn with_operation<T>(
+    app: &AppHandle,
+    state: &AppState,
+    operation_id: &str,
+    work: impl FnOnce(&OperationControl) -> Result<T, String>,
+) -> Result<T, String> {
+    if operation_id.is_empty()
+        || operation_id.len() > 64
+        || !operation_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err("Identificador de operación no válido".into());
+    }
+    let control = OperationControl::new();
+    {
+        let mut operations = state
+            .operations
+            .lock()
+            .map_err(|_| "No se pudo acceder al centro de operaciones".to_string())?;
+        if operations.contains_key(operation_id) {
+            return Err("El identificador de operación ya está en uso".into());
+        }
+        operations.insert(operation_id.to_owned(), control.clone());
+    }
+    emit_operation_event(app, operation_id, "queued", None, None);
+    let result = work(&control);
+    let (status, message) = match &result {
+        Ok(_) => ("completed", None),
+        Err(error)
+            if (error.contains("operation cancelled") || error.contains("operación cancelada"))
+                && !error.contains("cleanup failed") =>
+        {
+            (
+                "cancelled",
+                Some("Cancellation completed at a safe checkpoint; incomplete output was removed or never published.".to_string()),
+            )
+        }
+        Err(_) => (
+            "failed",
+            Some("Operation failed. Cleanup was attempted where needed; see the form feedback for details.".to_string()),
+        ),
+    };
+    // Error strings can contain OS paths; they are returned to the invoking
+    // form only and are deliberately excluded from operation events.
+    if let Ok(mut operations) = state.operations.lock() {
+        operations.remove(operation_id);
+    }
+    emit_operation_event(app, operation_id, status, None, message);
+    result
+}
+
 #[tauri::command]
-fn vault_status(state: State<'_, AppState>) -> Result<bool, String> {
+fn cancel_operation(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    operation_id: String,
+) -> Result<bool, String> {
+    let operations = state
+        .operations
+        .lock()
+        .map_err(|_| "No se pudo acceder al centro de operaciones".to_string())?;
+    if let Some(control) = operations.get(&operation_id) {
+        control.cancel();
+        emit_operation_event(&app, &operation_id, "cancelling", None, None);
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+async fn vault_status(state: State<'_, AppState>) -> Result<bool, String> {
     let guard = state
         .session
         .lock()
@@ -324,85 +427,136 @@ fn lock_vault(state: State<'_, AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn encrypt_file(state: State<'_, AppState>, input_path: String) -> Result<String, String> {
-    let guard = active_session(&state)?;
-    let session = guard.as_ref().expect("active_session checked");
-    let key_id = session
-        .list_keys()
-        .find(|record| record.purpose() == Purpose::Encrypt && record.status() == KeyStatus::Active)
-        .map(|record| record.key_id().clone())
-        .ok_or_else(|| "El vault no tiene una clave activa para cifrar".to_string())?;
-    let output = session
-        .encrypt_file(&input_path, &key_id, Vec::new())
-        .map_err(|e| format!("No se pudo cifrar el archivo: {e}"))?;
-    Ok(format!("Archivo cifrado: {}", output.display()))
+async fn encrypt_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input_path: String,
+    operation_id: String,
+) -> Result<String, String> {
+    with_operation(&app, &state, &operation_id, |control| {
+        let guard = active_session(&state)?;
+        if control.is_cancelled() {
+            return Err("operation cancelled".into());
+        }
+        emit_operation_event(&app, &operation_id, "running", None, None);
+        let session = guard.as_ref().expect("active_session checked");
+        let key_id = session
+            .list_keys()
+            .find(|record| {
+                record.purpose() == Purpose::Encrypt && record.status() == KeyStatus::Active
+            })
+            .map(|record| record.key_id().clone())
+            .ok_or_else(|| "El vault no tiene una clave activa para cifrar".to_string())?;
+        let mut reporter =
+            |progress| emit_operation_event(&app, &operation_id, "running", Some(progress), None);
+        let output = session
+            .encrypt_file_controlled(&input_path, &key_id, Vec::new(), control, &mut reporter)
+            .map_err(|error| format!("No se pudo cifrar el archivo: {error}"))?;
+        Ok(format!("Archivo cifrado: {}", output.display()))
+    })
 }
 
 #[tauri::command]
-fn decrypt_file(
+async fn decrypt_file(
+    app: AppHandle,
     state: State<'_, AppState>,
     input_path: String,
     output_path: String,
+    operation_id: String,
 ) -> Result<String, String> {
     if output_path.trim().is_empty() {
         return Err("Indica dónde restaurar el archivo".into());
     }
-    let guard = active_session(&state)?;
-    let session = guard.as_ref().expect("active_session checked");
-    session
-        .decrypt_file(&input_path, &output_path)
-        .map_err(|e| format!("No se pudo restaurar el archivo: {e}"))?;
-    Ok(format!("Archivo restaurado: {output_path}"))
+    with_operation(&app, &state, &operation_id, |control| {
+        let guard = active_session(&state)?;
+        if control.is_cancelled() {
+            return Err("operation cancelled".into());
+        }
+        emit_operation_event(&app, &operation_id, "running", None, None);
+        let session = guard.as_ref().expect("active_session checked");
+        let mut reporter =
+            |progress| emit_operation_event(&app, &operation_id, "running", Some(progress), None);
+        session
+            .decrypt_file_controlled(&input_path, &output_path, control, &mut reporter)
+            .map_err(|error| format!("No se pudo restaurar el archivo: {error}"))?;
+        Ok(format!("Archivo restaurado: {output_path}"))
+    })
 }
 
 #[tauri::command]
-fn encrypt_folder(
+async fn encrypt_folder(
+    app: AppHandle,
     state: State<'_, AppState>,
     source_path: String,
     vault_folder_path: String,
+    operation_id: String,
 ) -> Result<String, String> {
     if source_path.trim().is_empty() || vault_folder_path.trim().is_empty() {
         return Err("Indica la carpeta original y dónde guardar el vault de carpeta".into());
     }
-    let guard = active_session(&state)?;
-    let session = guard.as_ref().expect("active_session checked");
-    let key_id = active_file_key(session)?;
-    let count = encrypt_folder_to_vault(
-        session,
-        &key_id,
-        std::path::Path::new(&source_path),
-        std::path::Path::new(&vault_folder_path),
-    )
-    .map_err(|error| format!("No se pudo cifrar la carpeta: {error}"))?;
-    Ok(format!("Carpeta cifrada: {count} archivos protegidos"))
+    with_operation(&app, &state, &operation_id, |control| {
+        let guard = active_session(&state)?;
+        if control.is_cancelled() {
+            return Err("operation cancelled".into());
+        }
+        emit_operation_event(&app, &operation_id, "running", None, None);
+        let session = guard.as_ref().expect("active_session checked");
+        let key_id = active_file_key(session)?;
+        let mut reporter =
+            |progress| emit_operation_event(&app, &operation_id, "running", Some(progress), None);
+        let count = nexus_q_vault_spike::folder_manifest::encrypt_folder_controlled(
+            session,
+            &key_id,
+            std::path::Path::new(&source_path),
+            std::path::Path::new(&vault_folder_path),
+            control,
+            &mut reporter,
+        )
+        .map_err(|error| format!("No se pudo cifrar la carpeta: {error}"))?;
+        Ok(format!("Carpeta cifrada: {count} archivos protegidos"))
+    })
 }
 
 #[tauri::command]
-fn decrypt_folder(
+async fn decrypt_folder(
+    app: AppHandle,
     state: State<'_, AppState>,
     vault_folder_path: String,
     destination_path: String,
+    operation_id: String,
 ) -> Result<String, String> {
     if vault_folder_path.trim().is_empty() || destination_path.trim().is_empty() {
         return Err("Indica la carpeta vault y el destino de restauración".into());
     }
-    let guard = active_session(&state)?;
-    let session = guard.as_ref().expect("active_session checked");
-    let count = decrypt_folder_from_vault(
-        session,
-        std::path::Path::new(&vault_folder_path),
-        std::path::Path::new(&destination_path),
-    )
-    .map_err(|error| format!("No se pudo restaurar la carpeta: {error}"))?;
-    Ok(format!("Carpeta restaurada: {count} archivos recuperados"))
+    with_operation(&app, &state, &operation_id, |control| {
+        let guard = active_session(&state)?;
+        if control.is_cancelled() {
+            return Err("operation cancelled".into());
+        }
+        emit_operation_event(&app, &operation_id, "running", None, None);
+        let session = guard.as_ref().expect("active_session checked");
+        let mut reporter =
+            |progress| emit_operation_event(&app, &operation_id, "running", Some(progress), None);
+        let count = nexus_q_vault_spike::folder_manifest::decrypt_folder_controlled(
+            session,
+            std::path::Path::new(&vault_folder_path),
+            std::path::Path::new(&destination_path),
+            control,
+            &mut reporter,
+        )
+        .map_err(|error| format!("No se pudo restaurar la carpeta: {error}"))?;
+        Ok(format!("Carpeta restaurada: {count} archivos recuperados"))
+    })
 }
 
 #[tauri::command]
-fn export_backup(
+async fn export_backup(
+    app: AppHandle,
     state: State<'_, AppState>,
     backup_path: String,
     backup_passphrase: String,
     backup_passphrase_confirmation: String,
+    operation_id: String,
 ) -> Result<String, String> {
     if backup_path.trim().is_empty() {
         return Err("Indica dónde guardar el backup".into());
@@ -410,26 +564,41 @@ fn export_backup(
     if backup_passphrase.len() < 12 {
         return Err("Usa una contraseña de backup de al menos 12 bytes".into());
     }
-    let guard = active_session(&state)?;
-    let session = guard.as_ref().expect("active_session checked");
-    let passphrase = confirmed_secret(
-        backup_passphrase,
-        backup_passphrase_confirmation,
-        "La contraseña del backup",
-    )?;
-    backup::export(session, &backup_path, passphrase.as_slice())
-        .map_err(|e| format!("No se pudo crear el backup: {e}"))?;
-    Ok("Backup cifrado creado".into())
+    with_operation(&app, &state, &operation_id, |control| {
+        let guard = active_session(&state)?;
+        if control.is_cancelled() {
+            return Err("operation cancelled".into());
+        }
+        emit_operation_event(&app, &operation_id, "running", None, None);
+        let session = guard.as_ref().expect("active_session checked");
+        let passphrase = confirmed_secret(
+            backup_passphrase,
+            backup_passphrase_confirmation,
+            "La contraseña del backup",
+        )?;
+        let mut reporter =
+            |progress| emit_operation_event(&app, &operation_id, "running", Some(progress), None);
+        backup::export_controlled(
+            session,
+            &backup_path,
+            passphrase.as_slice(),
+            control,
+            &mut reporter,
+        )
+        .map_err(|error| format!("No se pudo crear el backup: {error}"))?;
+        Ok("Backup cifrado creado".into())
+    })
 }
 
 #[tauri::command]
-fn import_backup(
-    state: State<'_, AppState>,
+async fn import_backup(
+    app: AppHandle,
     backup_path: String,
     backup_passphrase: String,
     new_vault_path: String,
     new_vault_password: String,
     new_vault_password_confirmation: String,
+    operation_id: String,
 ) -> Result<String, String> {
     if backup_path.trim().is_empty() || new_vault_path.trim().is_empty() {
         return Err("Indica la ruta del backup y la del nuevo vault".into());
@@ -440,32 +609,43 @@ fn import_backup(
     if new_vault_password.len() < 12 {
         return Err("Usa una contraseña nueva de al menos 12 bytes".into());
     }
-    let mut guard = state
-        .session
-        .lock()
-        .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
-    if guard.is_some() {
-        return Err("Bloquea el vault actual antes de importar un backup".into());
-    }
-    let passphrase = secret_bytes(backup_passphrase);
-    let password = confirmed_secret(
-        new_vault_password,
-        new_vault_password_confirmation,
-        "La nueva contraseña del vault",
-    )?;
-    let vault = backup::import(
-        &backup_path,
-        passphrase.as_slice(),
-        &new_vault_path,
-        password.as_slice(),
-    )
-    .map_err(|e| format!("No se pudo restaurar el backup: {e}"))?;
-    let session = vault
-        .unlock(password.as_slice())
-        .map_err(|e| format!("No se pudo verificar el vault restaurado: {e}"))?;
-    *guard = Some(session);
-    touch_activity(&state)?;
-    Ok("Backup restaurado en un nuevo vault y verificado".into())
+    let state = app.state::<AppState>();
+    with_operation(&app, &state, &operation_id, |control| {
+        let mut guard = state
+            .session
+            .lock()
+            .map_err(|_| "El estado seguro de la aplicación no está disponible".to_string())?;
+        if control.is_cancelled() {
+            return Err("operation cancelled".into());
+        }
+        emit_operation_event(&app, &operation_id, "running", None, None);
+        if guard.is_some() {
+            return Err("Bloquea el vault actual antes de importar un backup".into());
+        }
+        let passphrase = secret_bytes(backup_passphrase);
+        let password = confirmed_secret(
+            new_vault_password,
+            new_vault_password_confirmation,
+            "La nueva contraseña del vault",
+        )?;
+        let mut reporter =
+            |progress| emit_operation_event(&app, &operation_id, "running", Some(progress), None);
+        let vault = backup::import_controlled(
+            &backup_path,
+            passphrase.as_slice(),
+            &new_vault_path,
+            password.as_slice(),
+            control,
+            &mut reporter,
+        )
+        .map_err(|error| format!("No se pudo restaurar el backup: {error}"))?;
+        let session = vault
+            .unlock(password.as_slice())
+            .map_err(|e| format!("No se pudo verificar el vault restaurado: {e}"))?;
+        *guard = Some(session);
+        touch_activity(&state)?;
+        Ok("Backup restaurado en un nuevo vault y verificado".into())
+    })
 }
 
 fn selected_path(path: Option<FilePath>) -> Result<Option<String>, String> {
@@ -601,6 +781,7 @@ fn main() {
             create_vault,
             open_vault,
             lock_vault,
+            cancel_operation,
             encrypt_file,
             decrypt_file,
             encrypt_folder,
@@ -648,7 +829,7 @@ mod idle_lock_tests {
         AppState, AutoLockOutcome, auto_lock_state, idle_timeout_from_seconds, inactivity_elapsed,
         lock_session, lock_session_slot, record_activity_state, resume_session, touch_activity,
     };
-    use nexusq_core::vault::Vault;
+    use nexusq_core::vault::{OperationControl, Vault};
     use std::{
         sync::{Arc, mpsc},
         thread,
@@ -668,6 +849,26 @@ mod idle_lock_tests {
         *state.idle_timeout.lock().unwrap() = Duration::from_secs(60);
         *state.last_activity.lock().unwrap() = Instant::now() - Duration::from_secs(61);
         state
+    }
+
+    #[test]
+    fn cancellation_registry_remains_available_while_session_is_locked() {
+        let state = AppState::default();
+        let control = OperationControl::new();
+        state
+            .operations
+            .lock()
+            .unwrap()
+            .insert("test-operation".into(), control.clone());
+        let _session_guard = state.session.lock().unwrap();
+        state
+            .operations
+            .lock()
+            .unwrap()
+            .get("test-operation")
+            .unwrap()
+            .cancel();
+        assert!(control.is_cancelled());
     }
 
     #[test]

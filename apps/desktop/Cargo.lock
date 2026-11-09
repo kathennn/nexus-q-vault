@@ -2249,6 +2249,7 @@ version = "0.1.0"
 dependencies = [
  "nexus-q-vault-spike",
  "nexusq-core",
+ "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
