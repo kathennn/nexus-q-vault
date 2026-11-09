@@ -1,5 +1,6 @@
 const UI_HTML: &str = include_str!("../apps/desktop/ui/index.html");
-const UI_JS: &str = include_str!("../apps/desktop/ui/app.js");
+const EN_LOCALE: &str = include_str!("../apps/desktop/ui/locales/en.json");
+const ES_LOCALE: &str = include_str!("../apps/desktop/ui/locales/es.json");
 
 #[test]
 fn export_and_restore_forms_show_accessible_backup_warnings() {
@@ -53,7 +54,7 @@ fn backup_warning_copy_has_english_and_spanish_translations() {
         "Import the .nqb with its separate backup passphrase and create a new vault with a new vault password. The restored keys are then used to decrypt your separately preserved .nqx files and restore your encrypted folder data. This does not reveal or reset the original vault password.",
     ] {
         assert!(
-            UI_JS.contains(&format!("\"{english_copy}\":")),
+            EN_LOCALE.contains(&format!("\"{english_copy}\":")),
             "missing English translation: {english_copy}"
         );
     }
@@ -69,7 +70,7 @@ fn backup_warning_copy_has_english_and_spanish_translations() {
         "Restaura las claves y los documentos",
     ] {
         assert!(
-            UI_HTML.contains(spanish_copy) || UI_JS.contains(spanish_copy),
+            UI_HTML.contains(spanish_copy) || ES_LOCALE.contains(spanish_copy),
             "missing Spanish copy: {spanish_copy}"
         );
     }
