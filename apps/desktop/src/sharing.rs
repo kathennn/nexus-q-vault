@@ -176,7 +176,16 @@ pub fn create_shared_package_file(
 }
 
 pub fn write_new_atomic(path: impl AsRef<Path>, bytes: &[u8]) -> Result<(), String> {
-    let path = path.as_ref();
+    write_new_atomic_with(path.as_ref(), bytes, |file, payload| {
+        file.write_all(payload)
+    })
+}
+
+fn write_new_atomic_with(
+    path: &Path,
+    bytes: &[u8],
+    mut write_payload: impl FnMut(&mut File, &[u8]) -> std::io::Result<()>,
+) -> Result<(), String> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -207,7 +216,7 @@ pub fn write_new_atomic(path: impl AsRef<Path>, bytes: &[u8]) -> Result<(), Stri
 
         let mut published = false;
         let result = (|| -> std::io::Result<()> {
-            file.write_all(bytes)?;
+            write_payload(&mut file, bytes)?;
             file.sync_all()?;
             drop(file);
             fs::hard_link(&temp_path, path)?;
@@ -506,6 +515,30 @@ mod tests {
         assert_eq!(fs::read(&source).unwrap(), original);
         assert!(!output.exists());
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn simulated_disk_full_cleans_temporary_output_and_never_publishes_destination() {
+        let dir = TempDir::new().unwrap();
+        let destination = dir.path().join("disk-full-output.nqx");
+
+        let result = write_new_atomic_with(&destination, b"payload", |file, _payload| {
+            file.write_all(b"partial temporary bytes")?;
+            Err(std::io::Error::from(std::io::ErrorKind::StorageFull))
+        });
+        assert!(
+            result.is_err(),
+            "simulated storage exhaustion must fail publication"
+        );
+        assert!(!destination.exists());
+        let leftovers: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "temporary output was not cleaned up: {leftovers:?}"
+        );
     }
 
     #[test]
