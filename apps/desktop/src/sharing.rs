@@ -266,9 +266,9 @@ fn create_private_temp_file(path: &Path) -> std::io::Result<File> {
         CreateFileW(
             filename.as_ptr(),
             0x4000_0000, // GENERIC_WRITE
-            0,            // no sharing while the private file is being populated
+            0,           // no sharing while the private file is being populated
             &mut attributes,
-            1,   // CREATE_NEW
+            1,    // CREATE_NEW
             0x80, // FILE_ATTRIBUTE_NORMAL
             0,
         )

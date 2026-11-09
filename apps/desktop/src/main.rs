@@ -552,13 +552,9 @@ fn create_receiving_identity(
     let key_id = session
         .generate_key(Algorithm::MlKem768, Purpose::KeyAgreement)
         .map_err(|error| format!("Could not generate the receiving key: {error}"))?;
-    let identity_id = session
-        .create_identity(Some(label))
-        .map_err(|error| {
-            format!(
-                "The receiving key was generated but the identity could not be created: {error}"
-            )
-        })?;
+    let identity_id = session.create_identity(Some(label)).map_err(|error| {
+        format!("The receiving key was generated but the identity could not be created: {error}")
+    })?;
     {
         let key = session
             .find_key_mut(&key_id)
