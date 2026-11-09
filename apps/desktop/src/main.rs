@@ -542,6 +542,7 @@ fn create_receiving_identity_records_with(
         &mut Session,
         String,
     ) -> Result<IdentityId, nexusq_core::vault::VaultError>,
+    destroy_key: impl FnOnce(&mut Session, &KeyId) -> Result<(), nexusq_core::vault::VaultError>,
 ) -> Result<(IdentityId, KeyId), String> {
     let key_id = session
         .generate_key(Algorithm::MlKem768, Purpose::KeyAgreement)
@@ -549,7 +550,7 @@ fn create_receiving_identity_records_with(
     let identity_id = match create_identity(session, label) {
         Ok(identity_id) => identity_id,
         Err(error) => {
-            return match session.destroy_key(&key_id, DestructionConfirmation::Explicit) {
+            return match destroy_key(session, &key_id) {
                 Ok(()) => Err(format!(
                     "Could not create the receiving identity: {error}. The generated key {key_id} was destroyed."
                 )),
@@ -593,10 +594,12 @@ fn create_receiving_identity(
     }
     let mut guard = active_session(&state)?;
     let session = guard.as_mut().expect("active_session checked");
-    let (identity_id, _key_id) =
-        create_receiving_identity_records_with(session, label, |session, label| {
-            session.create_identity(Some(label))
-        })?;
+    let (identity_id, _key_id) = create_receiving_identity_records_with(
+        session,
+        label,
+        |session, label| session.create_identity(Some(label)),
+        |session, key_id| session.destroy_key(key_id, DestructionConfirmation::Explicit),
+    )?;
     let card = contact_card_for_identity(session, &identity_id)?;
     touch_activity(&state)?;
     Ok(card)
@@ -1428,6 +1431,7 @@ mod receiving_identity_failure_tests {
             &mut session,
             "Alice".into(),
             |_session, _label| Err(VaultError::WrongPassword),
+            |session, key_id| session.destroy_key(key_id, DestructionConfirmation::Explicit),
         )
         .unwrap_err();
 
@@ -1435,6 +1439,30 @@ mod receiving_identity_failure_tests {
         let keys: Vec<_> = session.list_keys().collect();
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].status(), KeyStatus::Destroyed);
+        assert!(session.list_identities().next().is_none());
+    }
+
+    #[test]
+    fn identity_creation_failure_reports_when_best_effort_key_cleanup_fails() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("receiving.nqv");
+        let vault = Vault::create(&path, b"test-password", None).unwrap();
+        let mut session = vault.unlock(b"test-password").unwrap();
+
+        let error = create_receiving_identity_records_with(
+            &mut session,
+            "Alice".into(),
+            |_session, _label| Err(VaultError::WrongPassword),
+            |_session, _key_id| Err(VaultError::WrongPassword),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("Best-effort cleanup"));
+        assert!(error.contains("Cleanup could not be confirmed"));
+        assert!(error.contains("after reopening the vault"));
+        let keys: Vec<_> = session.list_keys().collect();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].status(), KeyStatus::Generated);
         assert!(session.list_identities().next().is_none());
     }
 }
