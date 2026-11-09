@@ -6,8 +6,8 @@ use nexusq_core::identity::IdentityId;
 use nexusq_core::{
     storage::backup,
     vault::{
-        Algorithm, KeyId, KeyStatus, OperationControl, OperationPhase, OperationProgress, Purpose,
-        Session, Vault,
+        Algorithm, DestructionConfirmation, KeyId, KeyStatus, OperationControl, OperationPhase,
+        OperationProgress, Purpose, Session, Vault,
     },
 };
 use std::{
@@ -535,26 +535,30 @@ fn contact_card_for_identity(
     )
 }
 
-#[tauri::command]
-fn create_receiving_identity(
-    state: State<'_, AppState>,
+fn create_receiving_identity_records_with(
+    session: &mut Session,
     label: String,
-) -> Result<sharing::ContactCard, String> {
-    let label = label.trim().to_string();
-    if label.is_empty() || label.len() > 80 || label.chars().any(char::is_control) {
-        return Err("Use a display name between 1 and 80 characters".into());
-    }
-    let mut guard = active_session(&state)?;
-    let session = guard.as_mut().expect("active_session checked");
-    // Generate the key before creating the identity so a key-generation
-    // failure cannot leave an empty receiving identity behind. Keep the key
-    // inactive until its owner and identity reference have both been set.
+    create_identity: impl FnOnce(
+        &mut Session,
+        String,
+    ) -> Result<IdentityId, nexusq_core::vault::VaultError>,
+) -> Result<(IdentityId, KeyId), String> {
     let key_id = session
         .generate_key(Algorithm::MlKem768, Purpose::KeyAgreement)
         .map_err(|error| format!("Could not generate the receiving key: {error}"))?;
-    let identity_id = session.create_identity(Some(label)).map_err(|error| {
-        format!("The receiving key was generated but the identity could not be created: {error}")
-    })?;
+    let identity_id = match create_identity(session, label) {
+        Ok(identity_id) => identity_id,
+        Err(error) => {
+            return match session.destroy_key(&key_id, DestructionConfirmation::Explicit) {
+                Ok(()) => Err(format!(
+                    "Could not create the receiving identity: {error}. The generated key {key_id} was destroyed."
+                )),
+                Err(cleanup_error) => Err(format!(
+                    "Could not create the receiving identity: {error}. Best-effort cleanup of generated key {key_id} also failed: {cleanup_error}. Cleanup could not be confirmed; inspect key {key_id} after reopening the vault, because an audit-write failure can leave its in-memory status changed without persisting it. If it is still generated, retry Core's explicit key-destruction operation after resolving the policy/audit issue."
+                )),
+            };
+        }
+    };
     {
         let key = session
             .find_key_mut(&key_id)
@@ -575,6 +579,24 @@ fn create_receiving_identity(
     session
         .activate_key(&key_id)
         .map_err(|error| format!("Could not activate the receiving key: {error}"))?;
+    Ok((identity_id, key_id))
+}
+
+#[tauri::command]
+fn create_receiving_identity(
+    state: State<'_, AppState>,
+    label: String,
+) -> Result<sharing::ContactCard, String> {
+    let label = label.trim().to_string();
+    if label.is_empty() || label.len() > 80 || label.chars().any(char::is_control) {
+        return Err("Use a display name between 1 and 80 characters".into());
+    }
+    let mut guard = active_session(&state)?;
+    let session = guard.as_mut().expect("active_session checked");
+    let (identity_id, _key_id) =
+        create_receiving_identity_records_with(session, label, |session, label| {
+            session.create_identity(Some(label))
+        })?;
     let card = contact_card_for_identity(session, &identity_id)?;
     touch_activity(&state)?;
     Ok(card)
@@ -1386,5 +1408,33 @@ mod password_confirmation_tests {
         assert!(confirmed_secret(String::new(), String::new(), "password").is_err());
         assert!(confirmed_secret(String::new(), "non-empty".into(), "password").is_err());
         assert!(confirmed_secret("password".into(), " password".into(), "password").is_err());
+    }
+}
+
+#[cfg(test)]
+mod receiving_identity_failure_tests {
+    use super::*;
+    use nexusq_core::vault::{KeyStatus, VaultError};
+    use tempfile::TempDir;
+
+    #[test]
+    fn identity_creation_failure_best_effort_destroys_the_generated_key() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("receiving.nqv");
+        let vault = Vault::create(&path, b"test-password", None).unwrap();
+        let mut session = vault.unlock(b"test-password").unwrap();
+
+        let error = create_receiving_identity_records_with(
+            &mut session,
+            "Alice".into(),
+            |_session, _label| Err(VaultError::WrongPassword),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("was destroyed"));
+        let keys: Vec<_> = session.list_keys().collect();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].status(), KeyStatus::Destroyed);
+        assert!(session.list_identities().next().is_none());
     }
 }
