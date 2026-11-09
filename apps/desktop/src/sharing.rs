@@ -402,6 +402,35 @@ mod tests {
                 .open_envelope_with_key_agreement(&key_id, &tampered_package)
                 .is_err()
         );
+
+        // Malformed, truncated and unsupported-format inputs must fail closed.
+        assert!(
+            recipient
+                .open_envelope_with_key_agreement(&key_id, b"not an NQX package")
+                .is_err()
+        );
+        assert!(
+            recipient
+                .open_envelope_with_key_agreement(&key_id, &package[..package.len() / 2])
+                .is_err()
+        );
+        let mut unsupported_envelope: nexusq_core::vault::Envelope =
+            nexusq_core::vault::from_slice(package.as_slice()).unwrap();
+        unsupported_envelope.header.version =
+            nexusq_core::vault::ENVELOPE_FORMAT_VERSION.saturating_add(1);
+        let unsupported_format = nexusq_core::vault::to_vec(&unsupported_envelope).unwrap();
+        assert!(
+            recipient
+                .open_envelope_with_key_agreement(&key_id, &unsupported_format)
+                .is_err()
+        );
+
+        // A destination that is a directory must fail without replacing it.
+        let blocked_destination = dir.path().join("destination-is-a-directory");
+        fs::create_dir(&blocked_destination).unwrap();
+        assert!(write_new_atomic(&blocked_destination, original).is_err());
+        assert!(blocked_destination.is_dir());
+
         let empty_source = dir.path().join("empty-file.txt");
         let empty_package = dir.path().join("empty-file.nqx");
         fs::write(&empty_source, []).unwrap();
